@@ -1,0 +1,10 @@
+	React.js	
+	Vite	
+	Node.js	
+	Express.js	
+	MongoDB	
+	Mongoose	
+	Axios	
+	JWT	User 
+	Multer	
+	CSS
