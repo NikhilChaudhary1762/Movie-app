@@ -1,0 +1,199 @@
+
+/* ===== NETFLIX INSPIRED ADMIN DASHBOARD ===== */
+
+.admin {
+  min-height: 100vh;
+  background: #080808;
+  color: #f5f5f5;
+  padding: 32px;
+  font-family: Inter, system-ui, sans-serif;
+}
+
+/* Header */
+
+.admin h1 {
+  color: #e50914;
+  font-weight: 800;
+  letter-spacing: -1px;
+}
+
+/* Cards */
+
+.admin .stat-card {
+  background: linear-gradient(145deg, #1c1c1c, #111111);
+  border: 1px solid #292929;
+  border-radius: 18px;
+  padding: 25px;
+  transition: all 0.3s ease;
+}
+
+.admin .stat-card:hover {
+  transform: translateY(-5px);
+  border-color: #e50914;
+  box-shadow: 0 10px 30px #e5091420;
+}
+
+/* Panels */
+
+.admin .dashboard-panel {
+  background: #141414;
+  border: 1px solid #252525;
+  border-radius: 18px;
+  padding: 24px;
+  margin-bottom: 25px;
+}
+
+/* Buttons */
+
+.admin button {
+  transition: all 0.25s ease;
+  cursor: pointer;
+}
+
+.admin .primary-btn {
+  background: #e50914;
+  color: white;
+  padding: 12px 22px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.admin .primary-btn:hover {
+  background: #b20710;
+  transform: translateY(-2px);
+}
+
+.admin .secondary-btn {
+  background: #292929;
+  color: white;
+  padding: 12px 20px;
+  border-radius: 10px;
+}
+
+.admin .secondary-btn:hover {
+  background: #383838;
+}
+
+/* Inputs */
+
+.admin input,
+.admin select,
+.admin textarea {
+  background: #222222;
+  color: white;
+  border: 1px solid #333333;
+  border-radius: 10px;
+  padding: 12px 14px;
+  outline: none;
+  width: 100%;
+  transition: border 0.2s;
+}
+
+.admin input:focus,
+.admin select:focus,
+.admin textarea:focus {
+  border-color: #e50914;
+}
+
+/* Table */
+
+.admin table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.admin th {
+  background: #202020;
+  color: #aaaaaa;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.admin td,
+.admin th {
+  padding: 16px;
+  border-bottom: 1px solid #292929;
+}
+
+.admin tbody tr {
+  transition: background 0.2s;
+}
+
+.admin tbody tr:hover {
+  background: #202020;
+}
+
+/* Posters */
+
+.admin img {
+  transition: transform 0.3s ease;
+}
+
+.admin img:hover {
+  transform: scale(1.06);
+}
+
+/* Analytics */
+
+.admin .analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.admin .chart-card {
+  background: #141414;
+  border: 1px solid #252525;
+  padding: 22px;
+  border-radius: 18px;
+}
+
+/* Messages */
+
+.admin .success-message {
+  background: #102719;
+  color: #4ade80;
+  padding: 15px;
+  border-radius: 10px;
+}
+
+.admin .error-message {
+  background: #301313;
+  color: #f87171;
+  padding: 15px;
+  border-radius: 10px;
+}
+
+/* Scrollbar */
+
+.admin ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.admin ::-webkit-scrollbar-thumb {
+  background: #e50914;
+  border-radius: 10px;
+}
+
+.admin ::-webkit-scrollbar-track {
+  background: #141414;
+}
+
+/* Responsive */
+
+@media (max-width: 768px) {
+  .admin {
+    padding: 16px;
+  }
+
+  .admin .analytics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin td,
+  .admin th {
+    padding: 10px;
+  }
+}
