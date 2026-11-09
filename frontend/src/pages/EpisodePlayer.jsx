@@ -179,7 +179,7 @@ const EpisodePlayer = () => {
 
   const videoUrl = episode.videoUrl?.startsWith("http")
     ? episode.videoUrl
-    : `http://localhost:5000${episode.videoUrl || ""}`;
+    : `https://movieflex-xdao.onrender.com${episode.videoUrl || ""}`;
 
   const formatTime = (seconds) => {
     if (!seconds || !Number.isFinite(seconds)) return "00:00";
