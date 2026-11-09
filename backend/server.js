@@ -20,9 +20,18 @@ const app = express();
 // ===============================
 // CORS
 // ===============================
+
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://movieflex98.onrender.com"
+];
+
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "https://movieflex98.onrender.com",
+    origin: allowedOrigins,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"]
   })
 );
 
