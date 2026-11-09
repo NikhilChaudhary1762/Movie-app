@@ -22,7 +22,7 @@ const app = express();
 // ===============================
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "https://movie-app99.vercel.app",
+    origin: process.env.CLIENT_URL || "https://movieflex98.onrender.com",
   })
 );
 
