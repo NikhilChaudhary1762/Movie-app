@@ -14,7 +14,7 @@ import {
   X,
 } from "lucide-react";
 
-const API_URL = "https://movieflex-xdao.onrender.com/api";
+const API_URL = "https://movieflex99.onrender.com/api";
 
 function Movies() {
   const [movies, setMovies] = useState([]);
