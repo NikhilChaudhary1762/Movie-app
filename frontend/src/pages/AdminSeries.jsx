@@ -907,33 +907,71 @@ export default function AdminSeries() {
                     />
                   </label>
                 </div>
-              </Field>
+              </Field>          
+<Field label="Upload Episode Video (B2 • Chunk/Resume)">
+  <label
+    htmlFor="episodeVideoInput"
+    className={`${button} bg-red-600 hover:bg-red-700 cursor-pointer`}
+  >
+    <Upload size={16} />
+    Select Episode Video
+  </label>
 
-              <Field label="Upload Episode Video (B2 • Chunk/Resume)">
-                <input
-                  type="file"
-                  accept="video/*,.mp4,.mkv,.mov,.avi,.webm,.wmv,.mpeg,.mpg,.3gp,.m4v,.flv,.ts,.ogv,.m2ts,.mts,.vob,.divx,.xvid"
-                  className={input}
-                  disabled={uploading === "episode-video"}
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0]; e.target.value = "";
-                    if (!file) return;
-                    try {
-                      setUploading("episode-video");
-                      const result = await uploadVideoChunks(file, {
-                        onProgress: (p) => notify(`Episode chunk upload: ${p}%`),
-                        onMessage: (m) => notify(m),
-                      });
-                      setEpisodeForm((prev) => ({ ...prev, videoUrl: result.videoUrl || result.watchUrl, downloadUrl: result.downloadUrl || prev.downloadUrl }));
-                      notify("Episode video uploaded to B2");
-                    } catch (error) {
-                      console.error(error);
-                      notify(error.response?.data?.message || "Episode upload failed; select the same file again to resume", "error");
-                    } finally { setUploading(""); }
-                  }}
-                />
-                <p className="mt-2 text-xs text-gray-400">8 MB chunks • Retry • Resume by selecting the same file again.</p>
-              </Field>
+  <input
+    id="episodeVideoInput"
+    type="file"
+    className="hidden"
+    accept="video/*,.mp4,.mkv,.mov,.avi,.webm,.wmv,.mpeg,.mpg,.3gp,.m4v,.flv,.ts,.ogv,.m2ts,.mts,.vob,.divx,.xvid"
+    disabled={uploading === "episode-video"}
+    onChange={async (e) => {
+      const file = e.target.files?.[0];
+      e.target.value = "";
+
+      if (!file) return;
+
+      try {
+        setUploading("episode-video");
+        notify(`Selected: ${file.name}`);
+
+        const result = await uploadVideoChunks(file, {
+          onProgress: (p) =>
+            notify(`Episode upload: ${p}%`),
+          onMessage: (m) => notify(m),
+        });
+
+        setEpisodeForm((prev) => ({
+          ...prev,
+          videoUrl: result.videoUrl || result.watchUrl,
+          downloadUrl:
+            result.downloadUrl || prev.downloadUrl,
+        }));
+
+        notify("Episode video uploaded successfully");
+      } catch (error) {
+        console.error("Episode Upload Error:", error);
+
+        notify(
+          error.response?.data?.message ||
+          error.message ||
+          "Episode upload failed",
+          "error"
+        );
+      } finally {
+        setUploading("");
+      }
+    }}
+  />
+
+  <p className="mt-2 text-xs text-gray-400">
+    8 MB chunks • Retry • Resume by selecting the same file again.
+  </p>
+
+  {uploading === "episode-video" && (
+    <p className="mt-2 text-sm text-yellow-400">
+      Uploading video... Please wait.
+    </p>
+  )}
+</Field>
 
               <Field label="Video URL (or paste manually)">
                 <input
