@@ -297,6 +297,11 @@ export default function AdminSeries() {
       return;
     }
 
+    if (!editingEpisodeId && !episodeForm.videoUrl.trim()) {
+      notify("Episode video is not uploaded. Upload the video and wait for the B2 file key before saving.", "error");
+      return;
+    }
+
     try {
       setSaving(true);
 
@@ -942,18 +947,18 @@ export default function AdminSeries() {
           onMessage: (m) => setUploadMessage(m),
         });
 
-        const generatedUrl = result.videoUrl || result.watchUrl;
+        const generatedUrl = result.videoUrl || result.watchUrl || (result.fileKey ? `b2://${result.fileKey}` : "");
         if (!generatedUrl || !(generatedUrl.startsWith("b2://") || /^https:\/\//i.test(generatedUrl))) {
-          throw new Error("Upload completed but Backblaze object key was not returned. Check B2 credentials and Render logs.");
+          throw new Error(result.message || "Upload reached completion but the server did not return a B2 file key. Check Render logs and /api/upload/status.");
         }
         setEpisodeForm((prev) => ({
           ...prev,
           videoUrl: generatedUrl,
-          downloadUrl: result.downloadUrl || generatedUrl || prev.downloadUrl,
+          downloadUrl: generatedUrl,
         }));
         setUploadProgress(100);
-        setUploadMessage("Upload completed successfully!");
-        notify("Video uploaded to private B2. Now click Add Episode / Save Episode to save its file key.");
+        setUploadMessage("Upload completed. B2 file key generated; now save the episode.");
+        notify("Video uploaded to private B2. Click Add Episode / Save Episode to store its file key.");
       } catch (error) {
         console.error("Episode Upload Error:", error);
 
@@ -1002,7 +1007,7 @@ export default function AdminSeries() {
   )}
 </Field>
 
-              <Field label="Video URL (auto-filled after upload)">
+              <Field label="Video URL (or paste manually)">
                 <input
                   className={input}
                   placeholder="https://your-public-b2-domain/videos/..."

@@ -481,6 +481,7 @@ export default function MovieDetails() {
               >
                 <source
                   src={mediaAccess.watchUrl}
+                  type="video/mp4"
                 />
                 Your browser does not support video playback.
               </video>

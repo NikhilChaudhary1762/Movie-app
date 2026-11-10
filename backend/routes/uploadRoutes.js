@@ -6,7 +6,7 @@ const fs = require("fs");
 const fsp = require("fs/promises");
 const crypto = require("crypto");
 
-const { uploadVideo, b2Enabled } = require("../config/b2Storage");
+const { uploadVideo, b2Enabled, b2ConfigStatus } = require("../config/b2Storage");
 
 const router = express.Router();
 
@@ -395,28 +395,27 @@ router.post("/chunk/:uploadId/complete", async (req, res) => {
       `${uploadId}${path.extname(meta.name).toLowerCase()}`
     );
 
-    // Merge sequentially and respect disk backpressure. This avoids reporting
-    // completion before all buffered writes have actually reached disk.
-    const output = await fsp.open(mergedFile, "w");
-    try {
-      for (let i = 0; i < totalChunks; i++) {
-        const chunkPath = path.join(dir, `${i}.part`);
+    // Merge chunks in correct order
+    const output = fs.createWriteStream(mergedFile);
+
+    for (let i = 0; i < totalChunks; i++) {
+      const chunkPath = path.join(dir, `${i}.part`);
+
+      await new Promise((resolve, reject) => {
         const input = fs.createReadStream(chunkPath);
-        for await (const buffer of input) {
-          let offset = 0;
-          while (offset < buffer.length) {
-            const { bytesWritten } = await output.write(
-              buffer, offset, buffer.length - offset
-            );
-            if (!bytesWritten) throw new Error(`Could not merge chunk ${i}`);
-            offset += bytesWritten;
-          }
-        }
-      }
-      await output.sync();
-    } finally {
-      await output.close();
+
+        input.on("error", reject);
+        output.on("error", reject);
+        input.on("end", resolve);
+
+        input.pipe(output, { end: false });
+      });
     }
+
+    await new Promise((resolve, reject) => {
+      output.end(resolve);
+      output.on("error", reject);
+    });
 
     const mergedStat = await fsp.stat(mergedFile);
 
@@ -430,7 +429,7 @@ router.post("/chunk/:uploadId/complete", async (req, res) => {
       meta.name
     );
 
-    // Cleanup only after B2 confirms that the object was stored.
+    // Cleanup after successful B2 upload
     await fsp.rm(dir, {
       recursive: true,
       force: true
@@ -442,6 +441,8 @@ router.post("/chunk/:uploadId/complete", async (req, res) => {
       filename: meta.name,
       size: meta.size,
       videoUrl,
+      fileKey: videoUrl.startsWith("b2://") ? videoUrl.slice(5) : null,
+      storage: videoUrl.startsWith("b2://") ? "backblaze-b2-private" : "external",
       watchUrl: videoUrl,
       downloadUrl: videoUrl
     });
@@ -510,6 +511,8 @@ async function uploadNormalVideo(req, res) {
       filename: req.file.originalname,
       size: req.file.size,
       videoUrl,
+      fileKey: videoUrl.startsWith("b2://") ? videoUrl.slice(5) : null,
+      storage: videoUrl.startsWith("b2://") ? "backblaze-b2-private" : "external",
       watchUrl: videoUrl,
       downloadUrl: videoUrl
     });
@@ -544,8 +547,9 @@ router.post(
 router.get("/status", (_req, res) => {
   res.json({
     success: true,
-    storage: b2Enabled ? "Backblaze B2" : "Local",
+    storage: b2Enabled ? "Backblaze B2 Private" : "Not configured",
     b2Configured: b2Enabled,
+    b2: b2ConfigStatus,
     chunkSize: CHUNK_SIZE,
     maxVideoSize: MAX_VIDEO_SIZE
   });

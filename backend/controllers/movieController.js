@@ -1,6 +1,5 @@
 
 const Movie = require("../models/Movie");
-const { getSignedVideoUrl } = require("../config/b2Storage");
 
 // ===============================
 // GET ALL MOVIES
@@ -90,12 +89,12 @@ const getMovieAccess = async (req, res) => {
     if (!movie) {
       return res.status(404).json({ success: false, message: 'Movie not found' });
     }
-    const watchUrl = movie.watchUrl ? await getSignedVideoUrl(movie.watchUrl) : '';
-    const downloadUrl = movie.downloadUrl ? await getSignedVideoUrl(movie.downloadUrl) : watchUrl;
-
     res.status(200).json({
       success: true,
-      media: { watchUrl, downloadUrl },
+      media: {
+        watchUrl: movie.watchUrl || '',
+        downloadUrl: movie.downloadUrl || '',
+      },
     });
   } catch (error) {
     res.status(400).json({ success: false, message: 'Invalid movie ID' });

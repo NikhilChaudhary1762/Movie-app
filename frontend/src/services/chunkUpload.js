@@ -33,7 +33,7 @@ export async function uploadVideoChunks(file, { onProgress = () => {}, onMessage
         const data = new FormData();
         data.append("chunk", chunk, `${index}.part`);
         await api.post(`/upload/chunk/${uploadId}/${index}`, data, {
-          // Let the browser/Axios set the multipart boundary automatically.
+          headers: { "Content-Type": "multipart/form-data" },
           timeout: 0,
         });
         success = true;
@@ -53,8 +53,14 @@ export async function uploadVideoChunks(file, { onProgress = () => {}, onMessage
 
   onMessage("Combining chunks and saving to Backblaze B2…");
   const complete = await api.post(`/upload/chunk/${uploadId}/complete`, {}, { timeout: 0 });
+  const result = complete.data || {};
+  const videoReference = result.videoUrl || result.watchUrl || (result.fileKey ? `b2://${result.fileKey}` : "");
+  if (!complete.data?.success || !videoReference) {
+    throw new Error(result.message || "B2 upload completed without returning a video key. Check the backend /api/upload/status endpoint and Render logs.");
+  }
+  result.videoUrl = videoReference;
   localStorage.removeItem(key);
   onProgress(100);
-  onUploaded(complete.data);
-  return complete.data;
+  onUploaded(result);
+  return result;
 }

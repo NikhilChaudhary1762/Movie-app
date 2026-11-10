@@ -25,9 +25,9 @@ const EpisodePlayer = () => {
   const [episode, setEpisode] = useState(null);
   const [episodes, setEpisodes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [savedTime, setSavedTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [videoError, setVideoError] = useState("");
 
   const progressKey = `episode-progress-${id}`;
 
@@ -38,6 +38,8 @@ const EpisodePlayer = () => {
     const fetchEpisode = async () => {
       try {
         setLoading(true);
+        setLoadError("");
+        setEpisode(null);
 
         const res = await api.get(`/episodes/${id}`);
         const data = res.data.episode || res.data;
@@ -45,7 +47,6 @@ const EpisodePlayer = () => {
         if (!active) return;
 
         setEpisode(data);
-        setVideoError("");
 
         const saved = Number(
           localStorage.getItem(`episode-progress-${id}`) || 0
@@ -65,7 +66,16 @@ const EpisodePlayer = () => {
           setEpisodes(Array.isArray(list) ? list : []);
         }
       } catch (error) {
-        console.error("Episode error:", error);
+        console.error("Episode load error:", error);
+        const status = error.response?.status;
+        const message = error.response?.data?.message || error.message || "Unable to load episode";
+        if (status === 401 || status === 403) {
+          setLoadError("Please log in again to watch this episode.");
+        } else if (status === 404) {
+          setLoadError(message || "Episode not found in database.");
+        } else {
+          setLoadError(message);
+        }
       } finally {
         if (active) setLoading(false);
       }
@@ -146,10 +156,10 @@ const EpisodePlayer = () => {
         <div className="flex min-h-screen flex-col items-center justify-center bg-[#080808] px-5 text-white">
           <Film size={60} className="text-zinc-700" />
           <h1 className="mt-5 text-2xl font-bold">
-            Episode Not Found
+            {loadError.includes("not found") ? "Episode Not Found" : "Unable to Load Episode"}
           </h1>
-          <p className="mt-2 text-zinc-500">
-            This episode may have been removed.
+          <p className="mt-2 max-w-xl text-center text-zinc-400">
+            {loadError || "No episode data was returned by the server."}
           </p>
           <button
             onClick={() => navigate(-1)}
@@ -179,8 +189,9 @@ const EpisodePlayer = () => {
       ? Math.min((savedTime / duration) * 100, 100)
       : 0;
 
-  // B2 URLs are already absolute. Do not rewrite them to the backend host.
-  const videoUrl = episode.videoUrl || "";
+  const videoUrl = episode.videoUrl?.startsWith("http")
+    ? episode.videoUrl
+    : `https://movieflex99.onrender.com${episode.videoUrl || ""}`;
 
   const formatTime = (seconds) => {
     if (!seconds || !Number.isFinite(seconds)) return "00:00";
@@ -228,18 +239,7 @@ const EpisodePlayer = () => {
             onLoadedMetadata={handleLoadedMetadata}
             onTimeUpdate={handleTimeUpdate}
             onEnded={handleEnded}
-            onError={() => setVideoError("Video load nahi ho paya. Signed URL expire ho sakta hai ya B2 file key galat hai. Page refresh karke dobara try karein.")}
           />
-          {videoError && (
-            <div className="border-t border-red-500/20 bg-red-950/40 px-4 py-3 text-sm text-red-300">
-              {videoError}
-            </div>
-          )}
-          {!videoUrl && (
-            <div className="border-t border-yellow-500/20 bg-yellow-950/30 px-4 py-3 text-sm text-yellow-200">
-              Is episode ke saath video file attach nahi hai.
-            </div>
-          )}
 
           {/* PLAYER BOTTOM LABEL */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/5 bg-zinc-950 px-4 py-3 sm:px-6">
