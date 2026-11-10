@@ -580,7 +580,7 @@ function AdminDashboard() {
                 </p>
 
                 <input
-                  type="url"
+                  type="text"
                   name="watchUrl"
                   value={formData.watchUrl}
                   onChange={handleChange}

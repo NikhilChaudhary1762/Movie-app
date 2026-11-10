@@ -33,7 +33,7 @@ export async function uploadVideoChunks(file, { onProgress = () => {}, onMessage
         const data = new FormData();
         data.append("chunk", chunk, `${index}.part`);
         await api.post(`/upload/chunk/${uploadId}/${index}`, data, {
-          headers: { "Content-Type": "multipart/form-data" },
+          // Let the browser/Axios set the multipart boundary automatically.
           timeout: 0,
         });
         success = true;

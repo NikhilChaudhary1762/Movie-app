@@ -27,6 +27,7 @@ const EpisodePlayer = () => {
   const [loading, setLoading] = useState(true);
   const [savedTime, setSavedTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [videoError, setVideoError] = useState("");
 
   const progressKey = `episode-progress-${id}`;
 
@@ -44,6 +45,7 @@ const EpisodePlayer = () => {
         if (!active) return;
 
         setEpisode(data);
+        setVideoError("");
 
         const saved = Number(
           localStorage.getItem(`episode-progress-${id}`) || 0
@@ -177,9 +179,8 @@ const EpisodePlayer = () => {
       ? Math.min((savedTime / duration) * 100, 100)
       : 0;
 
-  const videoUrl = episode.videoUrl?.startsWith("http")
-    ? episode.videoUrl
-    : `https://movieflex99.onrender.com${episode.videoUrl || ""}`;
+  // B2 URLs are already absolute. Do not rewrite them to the backend host.
+  const videoUrl = episode.videoUrl || "";
 
   const formatTime = (seconds) => {
     if (!seconds || !Number.isFinite(seconds)) return "00:00";
@@ -227,7 +228,18 @@ const EpisodePlayer = () => {
             onLoadedMetadata={handleLoadedMetadata}
             onTimeUpdate={handleTimeUpdate}
             onEnded={handleEnded}
+            onError={() => setVideoError("Video load nahi ho paya. Signed URL expire ho sakta hai ya B2 file key galat hai. Page refresh karke dobara try karein.")}
           />
+          {videoError && (
+            <div className="border-t border-red-500/20 bg-red-950/40 px-4 py-3 text-sm text-red-300">
+              {videoError}
+            </div>
+          )}
+          {!videoUrl && (
+            <div className="border-t border-yellow-500/20 bg-yellow-950/30 px-4 py-3 text-sm text-yellow-200">
+              Is episode ke saath video file attach nahi hai.
+            </div>
+          )}
 
           {/* PLAYER BOTTOM LABEL */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/5 bg-zinc-950 px-4 py-3 sm:px-6">

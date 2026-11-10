@@ -395,27 +395,28 @@ router.post("/chunk/:uploadId/complete", async (req, res) => {
       `${uploadId}${path.extname(meta.name).toLowerCase()}`
     );
 
-    // Merge chunks in correct order
-    const output = fs.createWriteStream(mergedFile);
-
-    for (let i = 0; i < totalChunks; i++) {
-      const chunkPath = path.join(dir, `${i}.part`);
-
-      await new Promise((resolve, reject) => {
+    // Merge sequentially and respect disk backpressure. This avoids reporting
+    // completion before all buffered writes have actually reached disk.
+    const output = await fsp.open(mergedFile, "w");
+    try {
+      for (let i = 0; i < totalChunks; i++) {
+        const chunkPath = path.join(dir, `${i}.part`);
         const input = fs.createReadStream(chunkPath);
-
-        input.on("error", reject);
-        output.on("error", reject);
-        input.on("end", resolve);
-
-        input.pipe(output, { end: false });
-      });
+        for await (const buffer of input) {
+          let offset = 0;
+          while (offset < buffer.length) {
+            const { bytesWritten } = await output.write(
+              buffer, offset, buffer.length - offset
+            );
+            if (!bytesWritten) throw new Error(`Could not merge chunk ${i}`);
+            offset += bytesWritten;
+          }
+        }
+      }
+      await output.sync();
+    } finally {
+      await output.close();
     }
-
-    await new Promise((resolve, reject) => {
-      output.end(resolve);
-      output.on("error", reject);
-    });
 
     const mergedStat = await fsp.stat(mergedFile);
 
@@ -429,7 +430,7 @@ router.post("/chunk/:uploadId/complete", async (req, res) => {
       meta.name
     );
 
-    // Cleanup after successful B2 upload
+    // Cleanup only after B2 confirms that the object was stored.
     await fsp.rm(dir, {
       recursive: true,
       force: true

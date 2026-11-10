@@ -10,7 +10,7 @@ export default function MovieUpload({ onUploaded }) {
     setLoading(true);setProgress(0);setMessage("Starting resumable upload…");setWatchUrl("");
     try{
       const result=await uploadVideoChunks(file,{onProgress:setProgress,onMessage:setMessage});
-      const url=result.watchUrl||result.videoUrl;setWatchUrl(url);setMessage("Video uploaded successfully!");
+      const url=result.watchUrl||result.videoUrl;setWatchUrl(url);setMessage("Video uploaded to private Backblaze B2. Save the movie to store its file key.");
       onUploaded?.(url);
     }catch(error){console.error(error);setMessage(error.response?.data?.message||error.message||"Upload failed. Select same file and retry to resume.");}
     finally{setLoading(false);}
@@ -23,7 +23,7 @@ export default function MovieUpload({ onUploaded }) {
     {loading&&<div style={{marginTop:15}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><span>Chunk upload / B2 transfer</span><span>{progress}%</span></div><div style={{width:"100%",height:12,background:"#333",borderRadius:10,overflow:"hidden"}}><div style={{width:`${progress}%`,height:"100%",background:"#e50914",transition:"width .2s"}}/></div></div>}
     <button type="button" className="primary-btn" onClick={handleUpload} disabled={loading||!file}>{loading?`Uploading ${progress}%`:"Upload Video (8 MB chunks)"}</button>
     {message&&<p>{message}</p>}
-    {watchUrl&&<div><label>Generated Watch URL</label><input readOnly value={watchUrl}/><button type="button" onClick={copy}>Copy URL</button></div>}
+    {watchUrl&&<div><label>Private B2 File Key (save this with the movie)</label><input readOnly value={watchUrl}/><button type="button" onClick={copy}>Copy URL</button></div>}
     <p style={{fontSize:12,opacity:.7}}>Resume: upload same file again after network interruption. Already received chunks are skipped.</p>
   </div>;
 }

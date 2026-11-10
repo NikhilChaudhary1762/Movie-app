@@ -942,15 +942,18 @@ export default function AdminSeries() {
           onMessage: (m) => setUploadMessage(m),
         });
 
+        const generatedUrl = result.videoUrl || result.watchUrl;
+        if (!generatedUrl || !(generatedUrl.startsWith("b2://") || /^https:\/\//i.test(generatedUrl))) {
+          throw new Error("Upload completed but Backblaze object key was not returned. Check B2 credentials and Render logs.");
+        }
         setEpisodeForm((prev) => ({
           ...prev,
-          videoUrl: result.videoUrl || result.watchUrl,
-          downloadUrl:
-            result.downloadUrl || prev.downloadUrl,
+          videoUrl: generatedUrl,
+          downloadUrl: result.downloadUrl || generatedUrl || prev.downloadUrl,
         }));
         setUploadProgress(100);
         setUploadMessage("Upload completed successfully!");
-        notify("Episode video uploaded successfully");
+        notify("Video uploaded to private B2. Now click Add Episode / Save Episode to save its file key.");
       } catch (error) {
         console.error("Episode Upload Error:", error);
 
@@ -999,7 +1002,7 @@ export default function AdminSeries() {
   )}
 </Field>
 
-              <Field label="Video URL (or paste manually)">
+              <Field label="Video URL (auto-filled after upload)">
                 <input
                   className={input}
                   placeholder="https://your-public-b2-domain/videos/..."
