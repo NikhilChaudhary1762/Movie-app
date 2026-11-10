@@ -53,14 +53,11 @@ export async function uploadVideoChunks(file, { onProgress = () => {}, onMessage
 
   onMessage("Combining chunks and saving to Backblaze B2…");
   const complete = await api.post(`/upload/chunk/${uploadId}/complete`, {}, { timeout: 0 });
-  const result = complete.data || {};
-  const videoReference = result.videoUrl || result.watchUrl || (result.fileKey ? `b2://${result.fileKey}` : "");
-  if (!complete.data?.success || !videoReference) {
-    throw new Error(result.message || "B2 upload completed without returning a video key. Check the backend /api/upload/status endpoint and Render logs.");
+  if (!complete.data?.success || !complete.data?.videoUrl) {
+    throw new Error(complete.data?.message || "Upload completed but B2 file key was not returned");
   }
-  result.videoUrl = videoReference;
   localStorage.removeItem(key);
   onProgress(100);
-  onUploaded(result);
-  return result;
+  onUploaded(complete.data);
+  return complete.data;
 }

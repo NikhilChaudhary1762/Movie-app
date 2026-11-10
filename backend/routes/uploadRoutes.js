@@ -6,7 +6,7 @@ const fs = require("fs");
 const fsp = require("fs/promises");
 const crypto = require("crypto");
 
-const { uploadVideo, b2Enabled, b2ConfigStatus } = require("../config/b2Storage");
+const { uploadVideo, b2Enabled, b2Missing } = require("../config/b2Storage");
 
 const router = express.Router();
 
@@ -266,8 +266,11 @@ router.get("/chunk/:uploadId/status", async (req, res) => {
 
 // POST /api/upload/chunk/:uploadId/:index
 
-router.post("/chunk/:uploadId/:index", (req, res) => {
+router.post("/chunk/:uploadId/:index", (req, res, next) => {
   const { uploadId, index } = req.params;
+
+  // Let the dedicated /complete endpoint below handle this reserved word.
+  if (index === "complete") return next();
 
   // IMPORTANT: Correct digit validation regex
   if (
@@ -441,8 +444,6 @@ router.post("/chunk/:uploadId/complete", async (req, res) => {
       filename: meta.name,
       size: meta.size,
       videoUrl,
-      fileKey: videoUrl.startsWith("b2://") ? videoUrl.slice(5) : null,
-      storage: videoUrl.startsWith("b2://") ? "backblaze-b2-private" : "external",
       watchUrl: videoUrl,
       downloadUrl: videoUrl
     });
@@ -511,8 +512,6 @@ async function uploadNormalVideo(req, res) {
       filename: req.file.originalname,
       size: req.file.size,
       videoUrl,
-      fileKey: videoUrl.startsWith("b2://") ? videoUrl.slice(5) : null,
-      storage: videoUrl.startsWith("b2://") ? "backblaze-b2-private" : "external",
       watchUrl: videoUrl,
       downloadUrl: videoUrl
     });
@@ -549,7 +548,10 @@ router.get("/status", (_req, res) => {
     success: true,
     storage: b2Enabled ? "Backblaze B2 Private" : "Not configured",
     b2Configured: b2Enabled,
-    b2: b2ConfigStatus,
+    missingEnvironmentVariables: b2Missing,
+    region: process.env.B2_REGION || null,
+    endpoint: process.env.B2_ENDPOINT || null,
+    bucketConfigured: Boolean(process.env.B2_BUCKET),
     chunkSize: CHUNK_SIZE,
     maxVideoSize: MAX_VIDEO_SIZE
   });

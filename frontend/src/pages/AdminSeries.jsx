@@ -297,11 +297,6 @@ export default function AdminSeries() {
       return;
     }
 
-    if (!editingEpisodeId && !episodeForm.videoUrl.trim()) {
-      notify("Episode video is not uploaded. Upload the video and wait for the B2 file key before saving.", "error");
-      return;
-    }
-
     try {
       setSaving(true);
 
@@ -947,18 +942,15 @@ export default function AdminSeries() {
           onMessage: (m) => setUploadMessage(m),
         });
 
-        const generatedUrl = result.videoUrl || result.watchUrl || (result.fileKey ? `b2://${result.fileKey}` : "");
-        if (!generatedUrl || !(generatedUrl.startsWith("b2://") || /^https:\/\//i.test(generatedUrl))) {
-          throw new Error(result.message || "Upload reached completion but the server did not return a B2 file key. Check Render logs and /api/upload/status.");
-        }
         setEpisodeForm((prev) => ({
           ...prev,
-          videoUrl: generatedUrl,
-          downloadUrl: generatedUrl,
+          videoUrl: result.videoUrl || result.watchUrl,
+          downloadUrl:
+            result.downloadUrl || prev.downloadUrl,
         }));
         setUploadProgress(100);
-        setUploadMessage("Upload completed. B2 file key generated; now save the episode.");
-        notify("Video uploaded to private B2. Click Add Episode / Save Episode to store its file key.");
+        setUploadMessage("Upload completed successfully!");
+        notify("Episode video uploaded successfully");
       } catch (error) {
         console.error("Episode Upload Error:", error);
 
@@ -1010,7 +1002,7 @@ export default function AdminSeries() {
               <Field label="Video URL (or paste manually)">
                 <input
                   className={input}
-                  placeholder="https://your-public-b2-domain/videos/..."
+                  placeholder="b2://videos/... (filled automatically after upload)"
                   value={episodeForm.videoUrl}
                   onChange={(e) => setEpisodeForm({ ...episodeForm, videoUrl: e.target.value })}
                 />

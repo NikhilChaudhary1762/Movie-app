@@ -39,7 +39,6 @@ const EpisodePlayer = () => {
       try {
         setLoading(true);
         setLoadError("");
-        setEpisode(null);
 
         const res = await api.get(`/episodes/${id}`);
         const data = res.data.episode || res.data;
@@ -66,15 +65,12 @@ const EpisodePlayer = () => {
           setEpisodes(Array.isArray(list) ? list : []);
         }
       } catch (error) {
-        console.error("Episode load error:", error);
-        const status = error.response?.status;
-        const message = error.response?.data?.message || error.message || "Unable to load episode";
-        if (status === 401 || status === 403) {
-          setLoadError("Please log in again to watch this episode.");
-        } else if (status === 404) {
-          setLoadError(message || "Episode not found in database.");
-        } else {
-          setLoadError(message);
+        console.error("Episode error:", error);
+        if (active) {
+          const status = error.response?.status;
+          setLoadError(status === 401 || status === 403
+            ? "Please log in again to watch this episode."
+            : error.response?.data?.message || error.message || "Unable to load episode.");
         }
       } finally {
         if (active) setLoading(false);
@@ -156,10 +152,10 @@ const EpisodePlayer = () => {
         <div className="flex min-h-screen flex-col items-center justify-center bg-[#080808] px-5 text-white">
           <Film size={60} className="text-zinc-700" />
           <h1 className="mt-5 text-2xl font-bold">
-            {loadError.includes("not found") ? "Episode Not Found" : "Unable to Load Episode"}
+            {loadError ? "Unable to Load Episode" : "Episode Not Found"}
           </h1>
-          <p className="mt-2 max-w-xl text-center text-zinc-400">
-            {loadError || "No episode data was returned by the server."}
+          <p className="mt-2 max-w-xl text-center text-zinc-500">
+            {loadError || "This episode may have been removed."}
           </p>
           <button
             onClick={() => navigate(-1)}
@@ -189,9 +185,7 @@ const EpisodePlayer = () => {
       ? Math.min((savedTime / duration) * 100, 100)
       : 0;
 
-  const videoUrl = episode.videoUrl?.startsWith("http")
-    ? episode.videoUrl
-    : `https://movieflex99.onrender.com${episode.videoUrl || ""}`;
+  const videoUrl = episode.videoUrl || "";
 
   const formatTime = (seconds) => {
     if (!seconds || !Number.isFinite(seconds)) return "00:00";
@@ -239,6 +233,7 @@ const EpisodePlayer = () => {
             onLoadedMetadata={handleLoadedMetadata}
             onTimeUpdate={handleTimeUpdate}
             onEnded={handleEnded}
+            onError={() => setLoadError("Video playback failed. Check the B2 signed URL, file format, and Render logs.")}
           />
 
           {/* PLAYER BOTTOM LABEL */}
