@@ -23,6 +23,7 @@ const app = express();
 
 const allowedOrigins = [
   "http://localhost:5173",
+  "https://movieflex98.onrender.com",
   ...(process.env.FRONTEND_URL || "").split(",").map((value) => value.trim()).filter(Boolean),
   ...(process.env.ALLOWED_ORIGINS || "").split(",").map((value) => value.trim()).filter(Boolean),
 ];
@@ -35,6 +36,11 @@ app.use(cors({
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Multipart-Session"],
+  
+}));
+app.options(/.*/, cors({
+  origin: "https://movieflex98.onrender.com",
+  credentials: true
 }));
 
 // ===============================
