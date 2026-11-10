@@ -80,7 +80,10 @@ const getEpisodeById = async (req, res) => {
 
 const createEpisode = async (req, res) => {
   try {
-    const episode = await Episode.create(req.body);
+    if (!req.body?.videoUrl || typeof req.body.videoUrl !== "string" || !req.body.videoUrl.trim()) {
+      return res.status(400).json({ success: false, message: "Upload the episode video first. Video URL is missing." });
+    }
+    const episode = await Episode.create({ ...req.body, videoUrl: req.body.videoUrl.trim() });
 
     res.status(201).json({
       success: true,
@@ -97,6 +100,9 @@ const createEpisode = async (req, res) => {
 
 const updateEpisode = async (req, res) => {
   try {
+    if (req.body?.videoUrl !== undefined && typeof req.body.videoUrl !== "string") {
+      return res.status(400).json({ success: false, message: "Invalid episode video URL" });
+    }
     const episode = await Episode.findByIdAndUpdate(
       req.params.id,
       req.body,

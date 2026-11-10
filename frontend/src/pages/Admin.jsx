@@ -326,6 +326,12 @@ function Admin() {
     try {
       setSaving(true);
 
+      if (!editingMovie && !formData.watchUrl?.trim()) {
+        setMessage({ text: "Please upload the movie video before saving.", type: "error" });
+        setSaving(false);
+        return;
+      }
+
       const payload = {
         ...formData,
         rating: Number(formData.rating),
@@ -580,7 +586,7 @@ function Admin() {
                 </p>
 
                 <input
-                  type="url"
+                  type="text"
                   name="watchUrl"
                   value={formData.watchUrl}
                   onChange={handleChange}

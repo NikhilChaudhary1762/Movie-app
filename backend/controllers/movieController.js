@@ -83,21 +83,26 @@ const getMovieById = async (req, res) => {
 };
 
 
+const { getSignedVideoUrl } = require("../config/b2Storage");
+
 const getMovieAccess = async (req, res) => {
   try {
-    const movie = await Movie.findById(req.params.id).select('watchUrl downloadUrl');
-    if (!movie) {
-      return res.status(404).json({ success: false, message: 'Movie not found' });
-    }
+    const movie = await Movie.findById(req.params.id).select("watchUrl downloadUrl");
+    if (!movie) return res.status(404).json({ success: false, message: "Movie not found" });
+
+    const signIfB2 = async (value, expiresIn = 7200) =>
+      value && value.startsWith("b2://") ? getSignedVideoUrl(value, expiresIn) : (value || "");
+
     res.status(200).json({
       success: true,
       media: {
-        watchUrl: movie.watchUrl || '',
-        downloadUrl: movie.downloadUrl || '',
+        watchUrl: await signIfB2(movie.watchUrl),
+        downloadUrl: await signIfB2(movie.downloadUrl, 3600),
       },
     });
   } catch (error) {
-    res.status(400).json({ success: false, message: 'Invalid movie ID' });
+    console.error("Movie access error:", error);
+    res.status(500).json({ success: false, message: error.message || "Unable to create video URL" });
   }
 };
 
@@ -106,36 +111,39 @@ const getMovieAccess = async (req, res) => {
 // ===============================
 const createMovie = async (req, res) => {
   try {
-    // Check video file
-    if (!req.file) {
+    const { title, description, poster, watchUrl, downloadUrl, ...details } = req.body || {};
+
+    if (!title?.trim() || !description?.trim() || !poster?.trim()) {
       return res.status(400).json({
         success: false,
-        message: "Please select a video file",
+        message: "Movie title, description and poster are required",
+      });
+    }
+    if (!watchUrl || typeof watchUrl !== "string" || !watchUrl.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Please upload the movie video first. Video URL is missing.",
       });
     }
 
-    // Video URL
-    const videoUrl = `/uploads/${req.file.filename}`;
-
-    // Create movie
     const movie = await Movie.create({
-      ...req.body,
-      videoUrl,
+      ...details,
+      title: title.trim(),
+      description: description.trim(),
+      poster: poster.trim(),
+      watchUrl: watchUrl.trim(),
+      downloadUrl: (downloadUrl || "").trim(),
       createdBy: req.user._id,
     });
 
     res.status(201).json({
       success: true,
-      message: "Movie uploaded successfully",
+      message: "Movie saved successfully",
       movie,
     });
   } catch (error) {
-    console.error("Create movie error:", error.message);
-
-    res.status(400).json({
-      success: false,
-      message: error.message,
-    });
+    console.error("Create movie error:", error);
+    res.status(400).json({ success: false, message: error.message });
   }
 };
 
