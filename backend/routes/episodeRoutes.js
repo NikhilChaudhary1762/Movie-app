@@ -18,7 +18,7 @@ router.get(
   getEpisodesBySeriesAndSeason
 );
 
-router.get("/", getAllEpisodes);
+router.get("/", protect, admin, getAllEpisodes);
 router.get("/:id", protect, getEpisodeById);
 
 router.post("/", createEpisode);

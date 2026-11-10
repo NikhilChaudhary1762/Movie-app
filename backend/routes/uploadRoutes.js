@@ -6,7 +6,7 @@ const fs = require("fs");
 const fsp = require("fs/promises");
 const crypto = require("crypto");
 
-const { uploadVideo, b2Enabled, b2Missing } = require("../config/b2Storage");
+const { uploadVideo, b2Enabled, b2Missing, b2ConfigError, b2Endpoint, b2Region } = require("../config/b2Storage");
 
 const router = express.Router();
 
@@ -555,8 +555,9 @@ router.get("/status", (_req, res) => {
     storage: b2Enabled ? "Backblaze B2 Private" : "Not configured",
     b2Configured: b2Enabled,
     missingEnvironmentVariables: b2Missing,
-    region: process.env.B2_REGION || null,
-    endpoint: process.env.B2_ENDPOINT || null,
+    region: b2Region || null,
+    endpoint: b2Endpoint || process.env.B2_ENDPOINT || null,
+    configurationError: b2ConfigError || null,
     bucketConfigured: Boolean(process.env.B2_BUCKET),
     chunkSize: CHUNK_SIZE,
     maxVideoSize: MAX_VIDEO_SIZE

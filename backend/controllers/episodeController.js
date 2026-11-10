@@ -34,7 +34,6 @@ module.exports = {
 const getAllEpisodes = async (req, res) => {
   try {
     const episodes = await Episode.find()
-      .select('-videoUrl')
       .populate("series", "title")
       .sort({ seasonNumber: 1, episodeNumber: 1 });
 
