@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 
 import api from "../services/api";
+import { uploadVideoChunks } from "../services/chunkUpload";
 
 const initialSeries = {
   title: "",
@@ -908,17 +909,38 @@ export default function AdminSeries() {
                 </div>
               </Field>
 
-              <Field label="Video URL">
+              <Field label="Upload Episode Video (B2 • Chunk/Resume)">
+                <input
+                  type="file"
+                  accept="video/*,.mp4,.mkv,.mov,.avi,.webm,.wmv,.mpeg,.mpg,.3gp,.m4v,.flv,.ts,.ogv,.m2ts,.mts,.vob,.divx,.xvid"
+                  className={input}
+                  disabled={uploading === "episode-video"}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]; e.target.value = "";
+                    if (!file) return;
+                    try {
+                      setUploading("episode-video");
+                      const result = await uploadVideoChunks(file, {
+                        onProgress: (p) => notify(`Episode chunk upload: ${p}%`),
+                        onMessage: (m) => notify(m),
+                      });
+                      setEpisodeForm((prev) => ({ ...prev, videoUrl: result.videoUrl || result.watchUrl, downloadUrl: result.downloadUrl || prev.downloadUrl }));
+                      notify("Episode video uploaded to B2");
+                    } catch (error) {
+                      console.error(error);
+                      notify(error.response?.data?.message || "Episode upload failed; select the same file again to resume", "error");
+                    } finally { setUploading(""); }
+                  }}
+                />
+                <p className="mt-2 text-xs text-gray-400">8 MB chunks • Retry • Resume by selecting the same file again.</p>
+              </Field>
+
+              <Field label="Video URL (or paste manually)">
                 <input
                   className={input}
-                  placeholder="https://example.com/video.mp4"
+                  placeholder="https://your-public-b2-domain/videos/..."
                   value={episodeForm.videoUrl}
-                  onChange={(e) =>
-                    setEpisodeForm({
-                      ...episodeForm,
-                      videoUrl: e.target.value,
-                    })
-                  }
+                  onChange={(e) => setEpisodeForm({ ...episodeForm, videoUrl: e.target.value })}
                 />
               </Field>
 
