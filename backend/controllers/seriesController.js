@@ -32,7 +32,17 @@ exports.getSeriesById = async (req, res) => {
 // Create series
 exports.createSeries = async (req, res) => {
   try {
-    const series = await Series.create(req.body);
+    const { title, description, poster, genres, totalSeasons } = req.body || {};
+    if (!String(title || "").trim()) {
+      return res.status(400).json({ success: false, message: "Series title is required" });
+    }
+    const series = await Series.create({
+      title: String(title).trim(),
+      description: String(description || ""),
+      poster: String(poster || ""),
+      genres: Array.isArray(genres) ? genres : [],
+      totalSeasons: Math.max(1, Number(totalSeasons) || 1),
+    });
 
     res.status(201).json({
       success: true,
@@ -47,9 +57,15 @@ exports.createSeries = async (req, res) => {
 // Update series
 exports.updateSeries = async (req, res) => {
   try {
+    const allowed = ["title", "description", "poster", "genres", "totalSeasons"];
+    const update = {};
+    for (const field of allowed) {
+      if (req.body[field] !== undefined) update[field] = req.body[field];
+    }
+    if (typeof update.title === "string") update.title = update.title.trim();
     const series = await Series.findByIdAndUpdate(
       req.params.id,
-      req.body,
+      update,
       { new: true, runValidators: true }
     );
 

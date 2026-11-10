@@ -1,117 +1,68 @@
 import api from "./api";
 
-const SESSION_PREFIX = "movieflex-upload:";
+const SESSION_PREFIX = "movieflex-b2-multipart:";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const fingerprint = (file) => `${file.name}:${file.size}:${file.lastModified}`;
 
-function fingerprint(file) {
-  return `${file.name}:${file.size}:${file.lastModified}`;
+async function putPart(url, blob) {
+  let lastError;
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    try {
+      const response = await fetch(url, { method: "PUT", body: blob });
+      if (!response.ok) throw new Error(`Backblaze part upload failed (${response.status})`);
+      const etag = response.headers.get("ETag") || response.headers.get("etag");
+      if (!etag) throw new Error("Backblaze CORS must expose the ETag response header");
+      return etag;
+    } catch (error) {
+      lastError = error;
+      if (attempt < 4) await sleep(attempt * 1200);
+    }
+  }
+  throw lastError;
 }
 
-/**
- * Upload in sequential chunks. If the backend reports a lost session or a
- * missing chunk, discard the stale local session and retry once from chunk 0.
- * Render deployments should use one backend instance and a persistent disk
- * for UPLOAD_TEMP_DIR so all chunk requests see the same files.
- */
-export async function uploadVideoChunks(
-  file,
-  { onProgress = () => {}, onMessage = () => {}, onUploaded = () => {} } = {},
-  restarted = false
-) {
-  const key = SESSION_PREFIX + fingerprint(file);
-  let uploadId = localStorage.getItem(key);
+/** Direct browser-to-Backblaze multipart upload. Video data never passes through Render. */
+export async function uploadVideoChunks(file, { onProgress = () => {}, onMessage = () => {}, onUploaded = () => {} } = {}) {
+  const storageKey = SESSION_PREFIX + fingerprint(file);
+  let session;
+  try { session = JSON.parse(localStorage.getItem(storageKey) || "null"); } catch { session = null; }
 
-  const init = await api.post("/upload/chunk/init", {
-    uploadId,
-    name: file.name,
-    size: file.size,
-    type: file.type || "video/*",
-  }, { timeout: 30000 });
-
-  uploadId = init.data.uploadId;
-  localStorage.setItem(key, uploadId);
-
-  const chunkSize = Number(init.data.chunkSize) || 8 * 1024 * 1024;
-  const total = Number(init.data.totalChunks);
-  const received = new Set(init.data.receivedChunks || []);
-  let uploadedBytes = [...received].reduce(
-    (sum, index) => sum + Math.min(chunkSize, file.size - index * chunkSize),
-    0
-  );
-
-  onProgress(Math.min(99, Math.round((uploadedBytes * 100) / file.size)));
+  if (!session?.key || !session?.uploadId || !session?.partSize || !session?.sessionToken) {
+    const init = await api.post("/upload/multipart/init", { name:file.name, size:file.size, type:file.type || "application/octet-stream" }, { timeout:30000 });
+    session = { key:init.data.key, uploadId:init.data.uploadId, partSize:init.data.partSize, totalParts:init.data.totalParts, sessionToken:init.data.sessionToken };
+    localStorage.setItem(storageKey, JSON.stringify(session));
+  }
 
   try {
-    for (let index = 0; index < total; index++) {
-      if (received.has(index)) continue;
+    const status = await api.get(`/upload/multipart/${encodeURIComponent(session.uploadId)}/status`, { params:{ key:session.key }, headers:{ "X-Multipart-Session":session.sessionToken }, timeout:30000 });
+    const done = new Map((status.data.parts || []).map(part => [Number(part.PartNumber), part]));
+    const parts = [];
+    let uploadedBytes = 0;
+    for (const part of done.values()) uploadedBytes += Number(part.Size || 0);
+    onProgress(Math.min(99, Math.round(uploadedBytes * 100 / file.size)));
 
-      const start = index * chunkSize;
-      const chunk = file.slice(start, Math.min(file.size, start + chunkSize));
-      let success = false;
-      let lastError;
-
-      for (let attempt = 1; attempt <= 4 && !success; attempt++) {
-        try {
-          const data = new FormData();
-          data.append("chunk", chunk, `${index}.part`);
-
-          // Do not manually set multipart Content-Type; the browser/Axios
-          // must add the multipart boundary.
-          await api.post(`/upload/chunk/${uploadId}/${index}`, data, {
-            timeout: 0,
-          });
-          success = true;
-        } catch (error) {
-          lastError = error;
-          if (error.response?.status === 404 || error.response?.status === 409) {
-            throw error;
-          }
-          if (attempt < 4) {
-            onMessage(`Chunk ${index + 1}/${total}: retry ${attempt}/3`);
-            await sleep(1000 * attempt);
-          }
-        }
-      }
-
-      if (!success) throw lastError;
-
-      uploadedBytes += chunk.size;
-      onProgress(Math.min(99, Math.round((uploadedBytes * 100) / file.size)));
-      onMessage(`Uploading chunk ${index + 1}/${total}`);
+    for (let partNumber = 1; partNumber <= session.totalParts; partNumber++) {
+      const existing = done.get(partNumber);
+      if (existing) { parts.push({ PartNumber:partNumber, ETag:existing.ETag }); continue; }
+      const start = (partNumber - 1) * session.partSize;
+      const blob = file.slice(start, Math.min(file.size, start + session.partSize));
+      onMessage(`Direct upload to Backblaze: part ${partNumber}/${session.totalParts}`);
+      const signed = await api.post("/upload/multipart/part-url", { key:session.key, uploadId:session.uploadId, partNumber, sessionToken:session.sessionToken }, { timeout:30000 });
+      const etag = await putPart(signed.data.url, blob);
+      parts.push({ PartNumber:partNumber, ETag:etag });
+      uploadedBytes += blob.size;
+      onProgress(Math.min(99, Math.round(uploadedBytes * 100 / file.size)));
     }
 
-    onMessage("Combining chunks and saving to Backblaze B2…");
-    const complete = await api.post(
-      `/upload/chunk/${uploadId}/complete`,
-      {},
-      { timeout: 0 }
-    );
-
-    if (!complete.data?.success || !complete.data?.videoUrl) {
-      throw new Error(
-        complete.data?.message || "Upload completed but B2 file key was not returned"
-      );
-    }
-
-    localStorage.removeItem(key);
-    onProgress(100);
-    onUploaded(complete.data);
+    onMessage("Finalizing video in Backblaze B2…");
+    const complete = await api.post("/upload/multipart/complete", { key:session.key, uploadId:session.uploadId, parts, name:file.name, size:file.size, sessionToken:session.sessionToken }, { timeout:120000 });
+    if (!complete.data?.success || !complete.data?.videoUrl) throw new Error(complete.data?.message || "B2 did not return the completed video key");
+    localStorage.removeItem(storageKey);
+    onProgress(100); onUploaded(complete.data);
     return complete.data;
   } catch (error) {
-    const status = error.response?.status;
-    const code = error.response?.data?.code;
-    const isLostSession =
-      status === 404 ||
-      status === 409 ||
-      code === "UPLOAD_SESSION_NOT_FOUND";
-
-    if (isLostSession && !restarted) {
-      localStorage.removeItem(key);
-      onProgress(0);
-      onMessage("Upload session expired or a chunk is missing. Restarting upload…");
-      return uploadVideoChunks(file, { onProgress, onMessage, onUploaded }, true);
-    }
-
+    // Keep the multipart session in localStorage so the user can retry and
+    // continue from parts already stored in B2. Do not silently discard it.
     throw error;
   }
 }

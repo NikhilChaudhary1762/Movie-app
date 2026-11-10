@@ -5,15 +5,50 @@ const path = require("path");
 const fs = require("fs");
 const fsp = require("fs/promises");
 const crypto = require("crypto");
+const os = require("os");
+const jwt = require("jsonwebtoken");
+const protect = require("../middleware/authMiddleware");
+const admin = require("../middleware/adminMiddleware");
 
-const { uploadVideo, b2Enabled, b2Missing, b2ConfigError, b2Endpoint, b2Region } = require("../config/b2Storage");
+const { uploadVideo, createMultipartVideo, signMultipartPart, listMultipartParts, completeMultipartVideo, abortMultipartVideo, b2Enabled, b2Missing, b2ConfigError, b2Endpoint, b2Region } = require("../config/b2Storage");
+const cloudinary = require("../config/cloudinary");
 
 const router = express.Router();
+
+// Every upload operation (including signing B2 part URLs) is admin-only.
+router.use(protect, admin);
+
+function issueMultipartToken(session) {
+  if (!process.env.JWT_SECRET) throw new Error("JWT_SECRET is not configured");
+  return jwt.sign(
+    { purpose: "movieflex-b2-multipart", ...session },
+    process.env.JWT_SECRET,
+    { expiresIn: "7d", issuer: "movieflex-api", audience: "movieflex-upload" }
+  );
+}
+
+function readMultipartToken(req) {
+  const token = req.body?.sessionToken || req.headers["x-multipart-session"];
+  if (!token || !process.env.JWT_SECRET) throw new Error("Valid multipart session token is required");
+  const session = jwt.verify(token, process.env.JWT_SECRET, {
+    issuer: "movieflex-api",
+    audience: "movieflex-upload"
+  });
+  if (session.purpose !== "movieflex-b2-multipart" ||
+      String(session.userId || "") !== String(req.user?._id || "") ||
+      typeof session.key !== "string" || !session.key.startsWith("videos/") ||
+      typeof session.uploadId !== "string" || !session.uploadId ||
+      !Number.isSafeInteger(session.size) || !Number.isSafeInteger(session.totalParts) ||
+      !Number.isSafeInteger(session.partSize)) {
+    throw new Error("Invalid multipart session token");
+  }
+  return session;
+}
 
 /* ================= CONFIG ================= */
 
 const TEMP_DIR = path.resolve(
-  process.env.UPLOAD_TEMP_DIR || path.join(__dirname, "../temp-uploads")
+  process.env.UPLOAD_TEMP_DIR || path.join(os.tmpdir(), "movieflex-uploads")
 );
 
 const CHUNK_DIR = path.join(TEMP_DIR, "chunks");
@@ -127,6 +162,108 @@ const chunkUpload = multer({
   limits: {
     fileSize: CHUNK_SIZE,
     files: 1
+  }
+});
+
+/* ================= DIRECT-TO-B2 MULTIPART UPLOAD ================= */
+// Video chunks are PUT directly from the browser to Backblaze. Render Free
+// handles only small JSON requests and signed URL generation, never video bytes.
+const multipartSessions = new Map(); // informational in-memory cache; client also persists session details
+
+router.post("/multipart/init", async (req, res) => {
+  try {
+    const { name, size, type } = req.body || {};
+    const fileSize = Number(size);
+    const ext = path.extname(String(name || '')).toLowerCase();
+    if (!name || !Number.isSafeInteger(fileSize) || fileSize <= 0 || fileSize > MAX_VIDEO_SIZE) return res.status(400).json({ success:false, message:"Invalid filename or video size" });
+    if (!ALLOWED_FORMATS.includes(ext)) return res.status(400).json({ success:false, message:"Unsupported video format" });
+    const partSize = Math.max(8 * 1024 * 1024, CHUNK_SIZE); // S3 multipart minimum is 5 MiB (except final part)
+    const totalParts = Math.ceil(fileSize / partSize);
+    if (totalParts > 10000) return res.status(400).json({ success:false, message:"Video requires more than 10,000 parts; increase UPLOAD_CHUNK_SIZE" });
+    const session = await createMultipartVideo(name, type || "application/octet-stream");
+    const claims = { ...session, name: String(name), size: fileSize, partSize, totalParts };
+    const sessionToken = issueMultipartToken({ ...claims, userId: String(req.user._id) });
+    multipartSessions.set(session.uploadId, { ...claims, createdAt:Date.now() });
+    return res.status(201).json({ success:true, ...session, name, size:fileSize, partSize, totalParts, sessionToken });
+  } catch (error) {
+    console.error("B2 multipart init error:", error);
+    return res.status(500).json({ success:false, message:error.message || "Unable to start direct B2 upload" });
+  }
+});
+
+router.post("/multipart/part-url", async (req, res) => {
+  try {
+    const session = readMultipartToken(req);
+    const number = Number(req.body?.partNumber);
+    if (req.body?.key !== session.key || req.body?.uploadId !== session.uploadId ||
+        !Number.isInteger(number) || number < 1 || number > session.totalParts) {
+      return res.status(400).json({ success:false, message:"Invalid multipart session or part number" });
+    }
+    const url = await signMultipartPart(session.key, session.uploadId, number);
+    return res.json({ success:true, url, partNumber:number });
+  } catch (error) {
+    console.error("B2 multipart sign error:", error);
+    return res.status(401).json({ success:false, message:error.message || "Unable to sign upload part" });
+  }
+});
+
+router.get("/multipart/:uploadId/status", async (req, res) => {
+  try {
+    const session = readMultipartToken(req);
+    if (req.params.uploadId !== session.uploadId || req.query.key !== session.key) {
+      return res.status(403).json({ success:false, message:"Multipart session does not match" });
+    }
+    const parts = await listMultipartParts(session.key, session.uploadId);
+    return res.json({ success:true, parts });
+  } catch (error) {
+    console.error("B2 multipart status error:", error);
+    return res.status(401).json({ success:false, message:error.message || "Unable to read uploaded parts" });
+  }
+});
+
+router.post("/multipart/complete", async (req, res) => {
+  try {
+    const session = readMultipartToken(req);
+    const { key, uploadId, parts, name, size } = req.body || {};
+    if (key !== session.key || uploadId !== session.uploadId ||
+        Number(size) !== session.size || String(name || "") !== session.name ||
+        !Array.isArray(parts) || parts.length !== session.totalParts) {
+      return res.status(400).json({ success:false, message:"Multipart completion details do not match the upload session" });
+    }
+    const storedParts = await listMultipartParts(session.key, session.uploadId);
+    const uploaded = new Map(storedParts.map(p => [Number(p.PartNumber), p]));
+    const requested = parts.map(p => ({ PartNumber:Number(p.PartNumber), ETag:p.ETag }));
+    if (requested.length !== session.totalParts) {
+      return res.status(409).json({ success:false, message:"Not all video parts have been uploaded" });
+    }
+    for (let index = 0; index < session.totalParts; index++) {
+      const part = requested[index];
+      const expectedNumber = index + 1;
+      const actual = uploaded.get(expectedNumber);
+      if (!part || part.PartNumber !== expectedNumber || !actual || actual.ETag !== part.ETag) {
+        return res.status(409).json({ success:false, message:`Part ${expectedNumber} is missing or its ETag does not match` });
+      }
+    }
+    const videoUrl = await completeMultipartVideo(session.key, session.uploadId, requested);
+    multipartSessions.delete(session.uploadId);
+    return res.status(201).json({ success:true, message:"Video uploaded directly to Backblaze B2", filename:session.name, size:session.size, videoUrl, watchUrl:videoUrl, downloadUrl:videoUrl });
+  } catch (error) {
+    console.error("B2 multipart completion error:", error);
+    return res.status(401).json({ success:false, message:error.message || "Multipart completion failed" });
+  }
+});
+
+router.delete("/multipart/:uploadId", async (req, res) => {
+  try {
+    const session = readMultipartToken(req);
+    if (req.params.uploadId !== session.uploadId || req.query.key !== session.key) {
+      return res.status(403).json({ success:false, message:"Multipart session does not match" });
+    }
+    await abortMultipartVideo(session.key, session.uploadId);
+    multipartSessions.delete(session.uploadId);
+    return res.json({ success:true, message:"Multipart upload cancelled" });
+  } catch (error) {
+    return res.status(401).json({ success:false, message:error.message || "Unable to cancel multipart upload" });
   }
 });
 
@@ -458,7 +595,10 @@ router.post("/chunk/:uploadId/complete", async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: error.message || "Chunk completion failed"
+      message: error.message || "Chunk completion failed",
+      hint: /Backblaze B2 is not configured|B2_ENDPOINT|B2_REGION/i.test(error.message || "")
+        ? "Check B2_ENDPOINT, B2_REGION, B2_KEY_ID, B2_APPLICATION_KEY and B2_BUCKET in Render Environment."
+        : undefined
     });
   } finally {
     if (mergedFile) {
@@ -547,12 +687,44 @@ router.post(
   uploadNormalVideo
 );
 
+/* ================= ADMIN IMAGE UPLOAD ================= */
+
+const imageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, cb) => {
+    if (/^image\/(jpeg|png|webp|gif|avif)$/.test(file.mimetype)) return cb(null, true);
+    cb(new Error("Only JPG, PNG, WEBP, GIF and AVIF images are allowed"));
+  }
+});
+
+router.post("/", imageUpload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ success:false, message:"Image file is required" });
+    if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+      return res.status(503).json({ success:false, message:"Image storage is not configured. Set Cloudinary environment variables." });
+    }
+    const uploaded = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        { folder:"movieflex/series", resource_type:"image", transformation:[{ quality:"auto", fetch_format:"auto" }] },
+        (error, result) => error ? reject(error) : resolve(result)
+      );
+      stream.end(req.file.buffer);
+    });
+    return res.status(201).json({ success:true, url:uploaded.secure_url, fileUrl:uploaded.secure_url, publicId:uploaded.public_id });
+  } catch (error) {
+    console.error("Admin image upload error:", error);
+    return res.status(500).json({ success:false, message:error.message || "Image upload failed" });
+  }
+});
+
 /* ================= STATUS ================= */
 
 router.get("/status", (_req, res) => {
   res.json({
     success: true,
-    storage: b2Enabled ? "Backblaze B2 Private" : "Not configured",
+    storage: b2Enabled ? "Backblaze B2 Private (direct multipart browser upload supported)" : "Not configured",
+    directMultipartUpload: b2Enabled,
     b2Configured: b2Enabled,
     missingEnvironmentVariables: b2Missing,
     region: b2Region || null,

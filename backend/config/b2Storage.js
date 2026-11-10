@@ -1,4 +1,4 @@
-const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, GetObjectCommand, CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, ListPartsCommand, AbortMultipartUploadCommand } = require('@aws-sdk/client-s3');
 const { Upload } = require('@aws-sdk/lib-storage');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const fs = require('fs');
@@ -11,10 +11,20 @@ const missing = required.filter((name) => !String(process.env[name] || '').trim(
 // Render values are sometimes entered as a bare host. AWS SDK needs an
 // absolute URL, so normalize `s3.us-east-005.backblazeb2.com` to HTTPS.
 function normalizeEndpoint(value) {
-  const raw = String(value || '').trim();
+  // Render environment values can accidentally contain line breaks/spaces or
+  // the literal text "undefined" from a broken template interpolation.
+  // Normalize those common copy/paste mistakes before constructing a URL.
+  let raw = String(value || '').trim().replace(/[\s\u200B]+/g, '');
+  raw = raw.replace(/undefined$/i, '');
   if (!raw) return '';
+
   const candidate = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
-  const parsed = new URL(candidate);
+  let parsed;
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    throw new Error('B2_ENDPOINT is invalid. Set it to https://s3.<region>.backblazeb2.com (without spaces or extra text)');
+  }
   if (!['https:', 'http:'].includes(parsed.protocol)) {
     throw new Error('B2_ENDPOINT must start with https:// or http://');
   }
@@ -24,7 +34,7 @@ function normalizeEndpoint(value) {
   if (parsed.pathname && parsed.pathname !== '/') {
     throw new Error('B2_ENDPOINT must be only the S3 hostname, without a path');
   }
-  return `${parsed.protocol}//${parsed.host}`;
+  return `${parsed.protocol}//${parsed.host.toLowerCase()}`;
 }
 
 let endpoint = '';
@@ -66,7 +76,7 @@ function getContentType(filename) {
   const types = {
     '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mkv': 'video/x-matroska',
     '.webm': 'video/webm', '.mov': 'video/quicktime', '.avi': 'video/x-msvideo',
-    '.mpeg': 'video/mpeg', '.mpg': 'video/mpeg', '.ogv': 'video/ogg',
+    '.mpeg': 'video/mpeg', '.mpg': 'video/mpeg', '.ogv': 'video/ogg', '.3gp': 'video/3gpp', '.flv': 'video/x-flv', '.vob': 'video/mpeg', '.wmv': 'video/x-ms-wmv', '.divx': 'video/divx', '.xvid': 'video/x-xvid',
     '.ts': 'video/mp2t', '.m2ts': 'video/mp2t', '.mts': 'video/mp2t',
   };
   return types[ext] || 'application/octet-stream';
@@ -85,6 +95,7 @@ async function uploadVideo(localPath, originalName) {
       Key: key,
       Body: fs.createReadStream(localPath),
       ContentType: getContentType(originalName || localPath),
+      ContentDisposition: 'inline',
       CacheControl: 'private, no-cache',
     },
     partSize: 100 * 1024 * 1024,
@@ -97,7 +108,54 @@ async function uploadVideo(localPath, originalName) {
   return `b2://${key}`;
 }
 
-async function getSignedVideoUrl(fileKey, expiresIn = 7200) {
+
+// Browser-to-B2 multipart upload: video bytes bypass the Render Free instance.
+async function createMultipartVideo(name, contentType) {
+  if (!enabled) throw new Error(`Backblaze B2 is not configured. Missing: ${missing.join(', ')}`);
+  const ext = path.extname(name || '').toLowerCase();
+  const key = `videos/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}${ext}`;
+  const result = await client.send(new CreateMultipartUploadCommand({
+    Bucket: process.env.B2_BUCKET, Key: key,
+    ContentType: (contentType && contentType !== 'application/octet-stream') ? contentType : getContentType(name || ''),
+    ContentDisposition: 'inline',
+    CacheControl: 'private, no-cache'
+  }));
+  if (!result.UploadId) throw new Error('Backblaze did not return a multipart upload ID');
+  return { key, uploadId: result.UploadId };
+}
+
+async function signMultipartPart(key, uploadId, partNumber, expiresIn = 3600) {
+  if (!enabled) throw new Error(`Backblaze B2 is not configured. Missing: ${missing.join(', ')}`);
+  if (!key || !uploadId || !Number.isInteger(partNumber) || partNumber < 1 || partNumber > 10000) throw new Error('Invalid multipart part request');
+  const command = new UploadPartCommand({ Bucket: process.env.B2_BUCKET, Key: key, UploadId: uploadId, PartNumber: partNumber });
+  return getSignedUrl(client, command, { expiresIn });
+}
+
+async function listMultipartParts(key, uploadId) {
+  if (!enabled) throw new Error(`Backblaze B2 is not configured. Missing: ${missing.join(', ')}`);
+  const parts = []; let marker;
+  do {
+    const result = await client.send(new ListPartsCommand({ Bucket: process.env.B2_BUCKET, Key: key, UploadId: uploadId, PartNumberMarker: marker }));
+    for (const part of result.Parts || []) parts.push({ PartNumber: part.PartNumber, ETag: part.ETag, Size: part.Size });
+    marker = result.IsTruncated ? result.NextPartNumberMarker : undefined;
+  } while (marker !== undefined);
+  return parts;
+}
+
+async function completeMultipartVideo(key, uploadId, parts) {
+  if (!enabled) throw new Error(`Backblaze B2 is not configured. Missing: ${missing.join(', ')}`);
+  const normalized = (parts || []).map(p => ({ PartNumber: Number(p.PartNumber), ETag: p.ETag })).sort((a,b) => a.PartNumber-b.PartNumber);
+  if (!normalized.length || normalized.some((p,i) => !Number.isInteger(p.PartNumber) || !p.ETag || p.PartNumber !== i+1)) throw new Error('Multipart parts are incomplete or invalid');
+  await client.send(new CompleteMultipartUploadCommand({ Bucket: process.env.B2_BUCKET, Key: key, UploadId: uploadId, MultipartUpload: { Parts: normalized } }));
+  return `b2://${key}`;
+}
+
+async function abortMultipartVideo(key, uploadId) {
+  if (!enabled) throw new Error(`Backblaze B2 is not configured. Missing: ${missing.join(', ')}`);
+  await client.send(new AbortMultipartUploadCommand({ Bucket: process.env.B2_BUCKET, Key: key, UploadId: uploadId }));
+}
+
+async function getSignedVideoUrl(fileKey, expiresIn = 86400) {
   if (!enabled) throw new Error(`Backblaze B2 is not configured. Missing: ${missing.join(', ')}`);
   if (!fileKey || typeof fileKey !== 'string') throw new Error('B2 file key is missing');
   const key = fileKey.startsWith('b2://') ? fileKey.slice(5) : fileKey;
@@ -111,6 +169,6 @@ async function getSignedVideoUrl(fileKey, expiresIn = 7200) {
 }
 
 module.exports = {
-  uploadVideo, getSignedVideoUrl, b2Enabled: enabled, b2Missing: missing,
+  uploadVideo, getSignedVideoUrl, createMultipartVideo, signMultipartPart, listMultipartParts, completeMultipartVideo, abortMultipartVideo, b2Enabled: enabled, b2Missing: missing,
   b2ConfigError: configError, b2Endpoint: endpoint, b2Region: region,
 };

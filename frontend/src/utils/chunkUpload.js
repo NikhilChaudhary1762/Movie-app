@@ -6,36 +6,32 @@ function uploadKey(file) {
   return `movieflex-upload:${file.name}:${file.size}:${file.lastModified}`;
 }
 
-// Upload chunks sequentially. uploadId is kept in localStorage so a retry can
-// query server status and skip chunks already uploaded.
+// Compatibility fallback. The Admin UI uses direct-to-B2 multipart uploads.
 export async function uploadVideoInChunks(file, onProgress = () => {}) {
   if (!file) throw new Error("Video file is required");
   if (file.size <= 0) throw new Error("Video file is empty");
 
-  const totalChunks = Math.ceil(file.size / VIDEO_CHUNK_SIZE);
   const key = uploadKey(file);
-  let uploadId = localStorage.getItem(key);
-  if (!uploadId) {
-    uploadId = crypto.randomUUID();
-    localStorage.setItem(key, uploadId);
-  }
+  let uploadId = localStorage.getItem(key) || crypto.randomUUID();
+  localStorage.setItem(key, uploadId);
 
-  const status = await api.get(`/upload/status/${uploadId}`);
-  const done = new Set(status.data.uploadedChunks || []);
+  const init = await api.post("/upload/chunk/init", {
+    uploadId, name: file.name, size: file.size, type: file.type || "application/octet-stream",
+  }, { timeout: 30000 });
+  uploadId = init.data.uploadId;
+  const totalChunks = init.data.totalChunks;
+  const received = new Set(init.data.receivedChunks || []);
 
   for (let index = 0; index < totalChunks; index++) {
-    if (done.has(index)) {
+    if (received.has(index)) {
       onProgress(Math.round(((index + 1) / totalChunks) * 100));
       continue;
     }
-    const chunk = file.slice(index * VIDEO_CHUNK_SIZE, Math.min((index + 1) * VIDEO_CHUNK_SIZE, file.size));
+    const chunk = file.slice(index * init.data.chunkSize, Math.min((index + 1) * init.data.chunkSize, file.size));
     const form = new FormData();
-    form.append("uploadId", uploadId);
-    form.append("chunkIndex", String(index));
-    form.append("totalChunks", String(totalChunks));
     form.append("chunk", chunk, `${file.name}.part`);
 
-    await api.post("/upload/chunk", form, {
+    await api.post(`/upload/chunk/${encodeURIComponent(uploadId)}/${index}`, form, {
       timeout: 0,
       onUploadProgress: (event) => {
         const part = event.total ? event.loaded / event.total : 0;
@@ -45,10 +41,7 @@ export async function uploadVideoInChunks(file, onProgress = () => {}) {
     onProgress(Math.min(99, Math.round(((index + 1) / totalChunks) * 100)));
   }
 
-  const result = await api.post("/upload/complete", {
-    uploadId, totalChunks, originalName: file.name, fileSize: file.size,
-  }, { timeout: 0 });
-
+  const result = await api.post(`/upload/chunk/${encodeURIComponent(uploadId)}/complete`, {}, { timeout: 0 });
   localStorage.removeItem(key);
   onProgress(100);
   return result.data;

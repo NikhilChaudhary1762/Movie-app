@@ -23,17 +23,19 @@ const app = express();
 
 const allowedOrigins = [
   "http://localhost:5173",
-  "https://movieflex98.onrender.com"
+  ...(process.env.FRONTEND_URL || "").split(",").map((value) => value.trim()).filter(Boolean),
+  ...(process.env.ALLOWED_ORIGINS || "").split(",").map((value) => value.trim()).filter(Boolean),
 ];
 
-app.use(
-  cors({
-    origin: allowedOrigins,
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"]
-  })
-);
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error(`CORS blocked origin: ${origin}`));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Multipart-Session"],
+}));
 
 // ===============================
 // BODY PARSER

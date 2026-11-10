@@ -90,7 +90,7 @@ const getMovieAccess = async (req, res) => {
     const movie = await Movie.findById(req.params.id).select("watchUrl downloadUrl");
     if (!movie) return res.status(404).json({ success: false, message: "Movie not found" });
 
-    const signIfB2 = async (value, expiresIn = 7200) =>
+    const signIfB2 = async (value, expiresIn = 86400) =>
       value && value.startsWith("b2://") ? getSignedVideoUrl(value, expiresIn) : (value || "");
 
     res.status(200).json({
@@ -180,9 +180,23 @@ const deleteMovie = async (req, res) => {
 // ===============================
 const updateMovie = async (req, res) => {
   try {
+    const allowed = [
+      "title", "description", "poster", "releaseDate", "genres",
+      "language", "rating", "duration", "featured", "trailerUrl",
+      "watchUrl", "downloadUrl"
+    ];
+    const update = {};
+    for (const field of allowed) {
+      if (req.body[field] !== undefined) update[field] = req.body[field];
+    }
+    if (typeof update.title === "string") update.title = update.title.trim();
+    if (typeof update.poster === "string") update.poster = update.poster.trim();
+    if (typeof update.watchUrl === "string") update.watchUrl = update.watchUrl.trim();
+    if (typeof update.downloadUrl === "string") update.downloadUrl = update.downloadUrl.trim();
+
     const movie = await Movie.findByIdAndUpdate(
       req.params.id,
-      req.body,
+      update,
       {
         new: true,
         runValidators: true,
