@@ -16,6 +16,7 @@ const uploadSessionSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now },
 });
 
-uploadSessionSchema.index({ createdAt:  1 }, { expireAfterSeconds: 60 * 60 * 24 * 14 });
+uploadSessionSchema.index({ createdAt: 1 }, { expireAfterSeconds: 60 * 60 * 24 * 14 });
+uploadSessionSchema.index({ userId: 1, status: 1 });
 
 module.exports = mongoose.model('UploadSession', uploadSessionSchema);

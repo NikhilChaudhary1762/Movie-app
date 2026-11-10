@@ -10,7 +10,7 @@ const getEpisodesBySeriesAndSeason = async (req, res) => {
     const episodes = await Episode.find({
       series: seriesId,
       seasonNumber: Number(seasonNumber),
-    }).select('-videoUrl').sort({ episodeNumber: 1 });
+    }).sort({ episodeNumber: 1 });
 
     res.status(200).json({
       success: true,
@@ -34,7 +34,6 @@ module.exports = {
 const getAllEpisodes = async (req, res) => {
   try {
     const episodes = await Episode.find()
-      .select('-videoUrl')
       .populate("series", "title")
       .sort({ seasonNumber: 1, episodeNumber: 1 });
 
