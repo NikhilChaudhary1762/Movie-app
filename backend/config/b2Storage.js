@@ -49,7 +49,7 @@ const configError = configProblems.join('; ');
 const enabled = missing.length === 0 && configProblems.length === 0;
 
 const client = enabled ? new S3Client({
-  endpoint,
+  endpoint: new URL(endpoint),
   region,
   credentials: {
     accessKeyId: process.env.B2_KEY_ID,
