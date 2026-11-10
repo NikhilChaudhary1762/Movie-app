@@ -5,6 +5,7 @@ const router = express.Router()
 const {
   getMovies,
   getMovieById,
+  getMovieAccess,
   createMovie,
   deleteMovie,
   updateMovie
@@ -15,8 +16,9 @@ const protect = require('../middleware/authMiddleware')
 const admin = require('../middleware/adminMiddleware')
 const upload = require("../middleware/upload");
 
-// Public Routes
+// Public metadata routes (media URLs are intentionally withheld)
 router.get('/', getMovies)
+router.get('/:id/access', protect, getMovieAccess)
 router.get('/:id', getMovieById)
 
 // Admin Routes

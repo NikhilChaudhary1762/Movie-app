@@ -1,6 +1,7 @@
 
 const express = require("express");
 const router = express.Router();
+const protect = require("../middleware/authMiddleware");
 
 const {
   getAllEpisodes,
@@ -18,7 +19,7 @@ router.get(
 );
 
 router.get("/", getAllEpisodes);
-router.get("/:id", getEpisodeById);
+router.get("/:id", protect, getEpisodeById);
 
 router.post("/", createEpisode);
 router.put("/:id", updateEpisode);

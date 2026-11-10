@@ -1,7 +1,8 @@
 
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import api from '../services/api'
+import { useAuth } from '../context/AuthContext'
 
 const getYouTubeEmbedUrl = (url) => {
   try {
@@ -31,6 +32,9 @@ const getYouTubeEmbedUrl = (url) => {
 
 export default function MovieDetails() {
   const { id } = useParams()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const { isAuthenticated } = useAuth()
 
   const [movie, setMovie] = useState(null)
   const [allMovies, setAllMovies] = useState([])
@@ -40,6 +44,60 @@ export default function MovieDetails() {
   const [watchlistLoading, setWatchlistLoading] = useState(false)
   const [watchlistMessage, setWatchlistMessage] = useState('')
   const [videoError, setVideoError] = useState(false)
+  const [mediaAccess, setMediaAccess] = useState(null)
+  const [mediaLoading, setMediaLoading] = useState(false)
+
+  const requireLogin = (returnTo = `${location.pathname}${location.hash}`) => {
+    if (isAuthenticated) return true
+    navigate('/login', {
+      state: { from: returnTo },
+    })
+    return false
+  }
+
+  const openMovie = () => {
+    if (!requireLogin(`${location.pathname}#watch`)) return
+    document.getElementById('watch')?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  const downloadMovie = async () => {
+    if (!requireLogin()) return
+    try {
+      setMediaLoading(true)
+      const { data } = await api.get(`/movies/${id}/access`)
+      const url = (data.media || data).downloadUrl
+      if (!url) {
+        setWatchlistMessage('Download is not available for this movie.')
+        return
+      }
+      window.open(url, '_blank', 'noopener,noreferrer')
+    } catch (error) {
+      setWatchlistMessage(error.response?.data?.message || 'Unable to get download link.')
+    } finally {
+      setMediaLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    const loadMediaAccess = async () => {
+      if (!isAuthenticated) {
+        setMediaAccess(null)
+        return
+      }
+      try {
+        setMediaLoading(true)
+        const { data } = await api.get(`/movies/${id}/access`)
+        if (!cancelled) setMediaAccess(data.media || data)
+      } catch (error) {
+        if (!cancelled) setMediaAccess(null)
+      } finally {
+        if (!cancelled) setMediaLoading(false)
+      }
+    }
+    loadMediaAccess()
+    return () => { cancelled = true }
+  }, [id, isAuthenticated])
 
   // FETCH MOVIE DETAILS
   useEffect(() => {
@@ -274,13 +332,14 @@ export default function MovieDetails() {
               {/* ACTION BUTTONS */}
               <div className="mt-8 flex flex-wrap gap-4">
 
-                {movie.watchUrl && (
-                  <a
-                    href="#watch"
+                {movie.hasWatchUrl && (
+                  <button
+                    type="button"
+                    onClick={openMovie}
                     className="rounded-xl bg-linear-to-r from-red-600 to-red-500 px-7 py-3.5 font-bold text-white shadow-lg shadow-red-600/25 transition hover:-translate-y-1"
                   >
                     ▶ Watch Movie
-                  </a>
+                  </button>
                 )}
 
                 {trailerEmbedUrl && (
@@ -311,15 +370,15 @@ export default function MovieDetails() {
                   ← Home
                 </Link>
 
-                {movie.downloadUrl && (
-                  <a
-                    href={movie.downloadUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="rounded-xl border border-green-500/40 bg-green-500/10 px-6 py-3.5 font-bold text-green-400 transition hover:border-green-500 hover:bg-green-500/20"
+                {movie.hasDownloadUrl && (
+                  <button
+                    type="button"
+                    onClick={downloadMovie}
+                    disabled={mediaLoading}
+                    className="rounded-xl border border-green-500/40 bg-green-500/10 px-6 py-3.5 font-bold text-green-400 transition hover:border-green-500 hover:bg-green-500/20 disabled:opacity-50"
                   >
-                    ⬇ Download
-                  </a>
+                    {mediaLoading ? 'Please wait...' : '⬇ Download'}
+                  </button>
                 )}
               </div>
 
@@ -372,7 +431,7 @@ export default function MovieDetails() {
       </section>
 
       {/* ONLINE WATCH PLAYER */}
-      {movie.watchUrl && (
+      {movie.hasWatchUrl && (
         <section
           id="watch"
           className="mx-auto max-w-7xl px-6 py-16 md:px-10"
@@ -392,7 +451,17 @@ export default function MovieDetails() {
           </div>
 
           <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-black shadow-2xl">
-            {videoError ? (
+            {!isAuthenticated ? (
+              <div className="flex aspect-video flex-col items-center justify-center gap-4 p-6 text-center">
+                <p className="text-lg font-semibold text-white">Login required to watch this movie</p>
+                <p className="text-sm text-zinc-400">Create a free account or login to start watching.</p>
+                <button onClick={() => requireLogin()} className="rounded-xl bg-red-600 px-6 py-3 font-bold text-white">Login / Sign up</button>
+              </div>
+            ) : mediaLoading ? (
+              <div className="flex aspect-video items-center justify-center text-zinc-300">Loading secure video...</div>
+            ) : !mediaAccess?.watchUrl ? (
+              <div className="flex aspect-video items-center justify-center text-zinc-400">Video link is not available.</div>
+            ) : videoError ? (
               <div className="flex aspect-video flex-col items-center justify-center gap-3 p-6 text-center">
                 <p className="text-red-400">
                   Video load nahi ho paya.
@@ -403,7 +472,7 @@ export default function MovieDetails() {
               </div>
             ) : (
               <video
-                key={movie.watchUrl}
+                key={mediaAccess.watchUrl}
                 controls
                 playsInline
                 preload="metadata"
@@ -411,7 +480,7 @@ export default function MovieDetails() {
                 onError={() => setVideoError(true)}
               >
                 <source
-                  src={movie.watchUrl}
+                  src={mediaAccess.watchUrl}
                   type="video/mp4"
                 />
                 Your browser does not support video playback.

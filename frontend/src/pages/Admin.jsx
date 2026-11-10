@@ -269,7 +269,15 @@ function Admin() {
   };
 
   // EDIT MOVIE
-  const handleEdit = (movie) => {
+  const handleEdit = async (movie) => {
+    let media = { watchUrl: "", downloadUrl: "" };
+    try {
+      const { data } = await api.get(`/movies/${movie._id}/access`);
+      media = data.media || media;
+    } catch (error) {
+      console.error("Unable to load movie media links:", error);
+    }
+
     setEditingMovie(movie);
 
     setFormData({
@@ -277,8 +285,8 @@ function Admin() {
       description: movie.description || "",
       poster: movie.poster || "",
       trailerUrl: movie.trailerUrl || "",
-      watchUrl: movie.watchUrl || "",
-      downloadUrl: movie.downloadUrl || "",
+      watchUrl: media.watchUrl || "",
+      downloadUrl: media.downloadUrl || "",
       rating: movie.rating ?? "",
       duration: movie.duration ?? "",
       language: movie.language || "",

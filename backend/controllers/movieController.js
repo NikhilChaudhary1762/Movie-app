@@ -21,8 +21,18 @@ const getMovies = async (req, res) => {
       filter.genres = genre;
     }
 
-    const movies = await Movie.find(filter).sort({
+    const records = await Movie.find(filter).sort({
       createdAt: -1,
+    }).lean();
+
+    // Keep media URLs private; public pages only need availability flags.
+    const movies = records.map((movie) => {
+      const safeMovie = { ...movie };
+      safeMovie.hasWatchUrl = Boolean(safeMovie.watchUrl);
+      safeMovie.hasDownloadUrl = Boolean(safeMovie.downloadUrl);
+      delete safeMovie.watchUrl;
+      delete safeMovie.downloadUrl;
+      return safeMovie;
     });
 
     res.status(200).json({
@@ -54,15 +64,40 @@ const getMovieById = async (req, res) => {
       });
     }
 
+    const safeMovie = movie.toObject();
+    safeMovie.hasWatchUrl = Boolean(safeMovie.watchUrl);
+    safeMovie.hasDownloadUrl = Boolean(safeMovie.downloadUrl);
+    delete safeMovie.watchUrl;
+    delete safeMovie.downloadUrl;
+
     res.status(200).json({
       success: true,
-      movie,
+      movie: safeMovie,
     });
   } catch (error) {
     res.status(400).json({
       success: false,
       message: "Invalid movie ID",
     });
+  }
+};
+
+
+const getMovieAccess = async (req, res) => {
+  try {
+    const movie = await Movie.findById(req.params.id).select('watchUrl downloadUrl');
+    if (!movie) {
+      return res.status(404).json({ success: false, message: 'Movie not found' });
+    }
+    res.status(200).json({
+      success: true,
+      media: {
+        watchUrl: movie.watchUrl || '',
+        downloadUrl: movie.downloadUrl || '',
+      },
+    });
+  } catch (error) {
+    res.status(400).json({ success: false, message: 'Invalid movie ID' });
   }
 };
 
@@ -172,6 +207,7 @@ const updateMovie = async (req, res) => {
 module.exports = {
   getMovies,
   getMovieById,
+  getMovieAccess,
   createMovie,
   deleteMovie,
   updateMovie,

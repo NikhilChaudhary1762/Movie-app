@@ -1,11 +1,13 @@
 
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 export default function Signup() {
   const { signup } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const returnTo = location.state?.from || '/'
 
   const [form, setForm] = useState({
     name: '',
@@ -30,7 +32,7 @@ export default function Signup() {
 
     try {
       await signup(form)
-      navigate('/')
+      navigate(returnTo, { replace: true })
     } catch (err) {
       setError(
         err.response?.data?.message || 'Signup failed'
@@ -98,7 +100,7 @@ export default function Signup() {
 
         <p className="text-center text-zinc-400">
           Already have an account?{' '}
-          <Link to="/login" className="text-red-500">
+          <Link to="/login" state={{ from: returnTo }} className="text-red-500">
             Login
           </Link>
         </p>

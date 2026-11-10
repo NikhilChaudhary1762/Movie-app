@@ -50,7 +50,9 @@ function App() {
         {/* Web Series */}
         <Route path="/series" element={<Series />} />
         <Route path="/series/:id" element={<SeriesDetails />} />
-        <Route path="/watch/episode/:id" element={<EpisodePlayer />} />
+        <Route element={<ProtectedRoute />}>
+          <Route path="/watch/episode/:id" element={<EpisodePlayer />} />
+        </Route>
 
         {/* Protected User Routes */}
         <Route element={<ProtectedRoute />}>
