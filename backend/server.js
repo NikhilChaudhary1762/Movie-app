@@ -23,8 +23,7 @@ const app = express();
 
 const allowedOrigins = [
   "http://localhost:5173",
-  ...(process.env.FRONTEND_URLS || process.env.FRONTEND_URL || "https://movieflex98.onrender.com")
-    .split(",").map((origin) => origin.trim().replace(/\/$/, "")).filter(Boolean),
+  "https://movieflex98.onrender.com"
 ];
 
 app.use(

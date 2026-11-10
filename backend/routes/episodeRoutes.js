@@ -2,7 +2,6 @@
 const express = require("express");
 const router = express.Router();
 const protect = require("../middleware/authMiddleware");
-const admin = require("../middleware/adminMiddleware");
 
 const {
   getAllEpisodes,
@@ -22,8 +21,8 @@ router.get(
 router.get("/", getAllEpisodes);
 router.get("/:id", protect, getEpisodeById);
 
-router.post("/", protect, admin, createEpisode);
-router.put("/:id", protect, admin, updateEpisode);
-router.delete("/:id", protect, admin, deleteEpisode);
+router.post("/", createEpisode);
+router.put("/:id", updateEpisode);
+router.delete("/:id", deleteEpisode);
 
 module.exports = router;
