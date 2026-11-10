@@ -93,16 +93,13 @@ const getMovieAccess = async (req, res) => {
     const signIfB2 = async (value, expiresIn = 7200) =>
       value && value.startsWith("b2://") ? getSignedVideoUrl(value, expiresIn) : (value || "");
 
-    const media = {
-      watchUrl: await signIfB2(movie.watchUrl),
-      downloadUrl: await signIfB2(movie.downloadUrl, 3600),
-    };
-    // Admin forms need stable storage keys; signed URLs expire and must never be saved back.
-    if (req.user?.role === 'admin') {
-      media.storageWatchKey = movie.watchUrl || '';
-      media.storageDownloadKey = movie.downloadUrl || '';
-    }
-    res.status(200).json({ success: true, media });
+    res.status(200).json({
+      success: true,
+      media: {
+        watchUrl: await signIfB2(movie.watchUrl),
+        downloadUrl: await signIfB2(movie.downloadUrl, 3600),
+      },
+    });
   } catch (error) {
     console.error("Movie access error:", error);
     res.status(500).json({ success: false, message: error.message || "Unable to create video URL" });
