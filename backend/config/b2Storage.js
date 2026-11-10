@@ -1,3 +1,6 @@
+console.log("===== B2 DEBUG =====");
+console.log("B2_ENDPOINT:", JSON.stringify(process.env.B2_ENDPOINT));
+console.log("B2_REGION:", JSON.stringify(process.env.B2_REGION));
 
 const {
   S3Client,
