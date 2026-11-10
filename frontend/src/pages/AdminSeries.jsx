@@ -63,6 +63,8 @@ export default function AdminSeries() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState("");
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadMessage, setUploadMessage] = useState("");
 
   const [notice, setNotice] = useState(null);
 
@@ -931,12 +933,13 @@ export default function AdminSeries() {
 
       try {
         setUploading("episode-video");
+        setUploadProgress(0);
+        setUploadMessage("Starting upload...");
         notify(`Selected: ${file.name}`);
 
         const result = await uploadVideoChunks(file, {
-          onProgress: (p) =>
-            notify(`Episode upload: ${p}%`),
-          onMessage: (m) => notify(m),
+          onProgress: (p) => setUploadProgress(p),
+          onMessage: (m) => setUploadMessage(m),
         });
 
         setEpisodeForm((prev) => ({
@@ -945,7 +948,8 @@ export default function AdminSeries() {
           downloadUrl:
             result.downloadUrl || prev.downloadUrl,
         }));
-
+        setUploadProgress(100);
+        setUploadMessage("Upload completed successfully!");
         notify("Episode video uploaded successfully");
       } catch (error) {
         console.error("Episode Upload Error:", error);
@@ -967,9 +971,31 @@ export default function AdminSeries() {
   </p>
 
   {uploading === "episode-video" && (
-    <p className="mt-2 text-sm text-yellow-400">
-      Uploading video... Please wait.
-    </p>
+    <div className="mt-4 space-y-3 rounded-xl border border-white/10 bg-black/30 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-sm text-yellow-400">Uploading video...</span>
+        <span className="text-lg font-bold tabular-nums text-white">
+          {uploadProgress}%
+        </span>
+      </div>
+
+      <div
+        className="h-3 w-full overflow-hidden rounded-full bg-white/10"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={uploadProgress}
+      >
+        <div
+          className="h-full rounded-full bg-red-500 transition-all duration-300"
+          style={{ width: `${uploadProgress}%` }}
+        />
+      </div>
+
+      <p className="text-xs text-gray-400 wrap-break-word">
+        {uploadMessage || "Preparing upload..."}
+      </p>
+    </div>
   )}
 </Field>
 
