@@ -109,7 +109,7 @@ export default function MovieUpload({ onUploaded }) {
 
       <input
         type="file"
-        accept=".mp4,video/mp4"
+        accept=".mp4,video/mp4,mkv,video/x-matroska,webm,video/webm"
         onChange={handleFileChange}
         disabled={loading}
       />
