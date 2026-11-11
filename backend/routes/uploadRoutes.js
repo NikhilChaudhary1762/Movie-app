@@ -186,8 +186,27 @@ router.post("/multipart/init", async (req, res) => {
     multipartSessions.set(session.uploadId, { ...claims, createdAt:Date.now() });
     return res.status(201).json({ success:true, ...session, name, size:fileSize, partSize, totalParts, sessionToken });
   } catch (error) {
-    console.error("B2 multipart init error:", error);
-    return res.status(500).json({ success:false, message:error.message || "Unable to start direct B2 upload" });
+    // Keep the provider's useful error code/request id in Render logs and
+    // return a safe, actionable message to the admin UI.
+    console.error("B2 multipart init error:", {
+      message: error.message,
+      name: error.name,
+      code: error.Code || error.code,
+      httpStatusCode: error.$metadata?.httpStatusCode,
+      requestId: error.$metadata?.requestId,
+      extendedRequestId: error.$metadata?.extendedRequestId,
+      bucketConfigured: Boolean(process.env.B2_BUCKET),
+      endpoint: b2Endpoint || "not configured",
+      region: b2Region || "not configured",
+    });
+    const providerCode = error.Code || error.code || error.name;
+    const message = error.message || "Unable to start direct B2 upload";
+    return res.status(502).json({
+      success: false,
+      message: `Backblaze B2 could not start the multipart upload: ${message}`,
+      code: providerCode || null,
+      requestId: error.$metadata?.requestId || null,
+    });
   }
 });
 
@@ -203,7 +222,7 @@ router.post("/multipart/part-url", async (req, res) => {
     return res.json({ success:true, url, partNumber:number });
   } catch (error) {
     console.error("B2 multipart sign error:", error);
-    return res.status(401).json({ success:false, message:error.message || "Unable to sign upload part" });
+    return res.status(error.name === "JsonWebTokenError" || error.name === "TokenExpiredError" ? 401 : 502).json({ success:false, message:error.message || "Unable to sign upload part", code:error.Code || error.code || null });
   }
 });
 
@@ -217,7 +236,7 @@ router.get("/multipart/:uploadId/status", async (req, res) => {
     return res.json({ success:true, parts });
   } catch (error) {
     console.error("B2 multipart status error:", error);
-    return res.status(401).json({ success:false, message:error.message || "Unable to read uploaded parts" });
+    return res.status(error.name === "JsonWebTokenError" || error.name === "TokenExpiredError" ? 401 : 502).json({ success:false, message:error.message || "Unable to read uploaded parts", code:error.Code || error.code || null });
   }
 });
 
@@ -249,7 +268,7 @@ router.post("/multipart/complete", async (req, res) => {
     return res.status(201).json({ success:true, message:"Video uploaded directly to Backblaze B2", filename:session.name, size:session.size, videoUrl, watchUrl:videoUrl, downloadUrl:videoUrl });
   } catch (error) {
     console.error("B2 multipart completion error:", error);
-    return res.status(401).json({ success:false, message:error.message || "Multipart completion failed" });
+    return res.status(error.name === "JsonWebTokenError" || error.name === "TokenExpiredError" ? 401 : 502).json({ success:false, message:error.message || "Multipart completion failed", code:error.Code || error.code || null });
   }
 });
 

@@ -26,22 +26,23 @@ const allowedOrigins = [
   "https://movieflex98.onrender.com",
   ...(process.env.FRONTEND_URL || "").split(",").map((value) => value.trim()).filter(Boolean),
   ...(process.env.ALLOWED_ORIGINS || "").split(",").map((value) => value.trim()).filter(Boolean),
-];
+].filter(Boolean);
 
-app.use(cors({
+// Use the SAME origin policy for normal requests and OPTIONS preflight.
+// A hard-coded OPTIONS origin can break browser uploads even when GET works.
+const corsOptions = {
   origin(origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    console.warn("CORS rejected origin:", origin);
     return callback(new Error(`CORS blocked origin: ${origin}`));
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Multipart-Session"],
-  
-}));
-app.options(/.*/, cors({
-  origin: "https://movieflex98.onrender.com",
-  credentials: true
-}));
+  optionsSuccessStatus: 204,
+};
+app.use(cors(corsOptions));
+app.options(/.*/, cors(corsOptions));
 
 // ===============================
 // BODY PARSER

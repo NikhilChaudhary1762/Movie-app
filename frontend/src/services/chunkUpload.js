@@ -9,7 +9,10 @@ async function putPart(url, blob) {
   for (let attempt = 1; attempt <= 4; attempt++) {
     try {
       const response = await fetch(url, { method: "PUT", body: blob });
-      if (!response.ok) throw new Error(`Backblaze part upload failed (${response.status})`);
+      if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        throw new Error(`Backblaze part upload failed (${response.status})${body ? `: ${body.slice(0, 300)}` : ""}`);
+      }
       const etag = response.headers.get("ETag") || response.headers.get("etag");
       if (!etag) throw new Error("Backblaze CORS must expose the ETag response header");
       return etag;
@@ -28,8 +31,17 @@ export async function uploadVideoChunks(file, { onProgress = () => {}, onMessage
   try { session = JSON.parse(localStorage.getItem(storageKey) || "null"); } catch { session = null; }
 
   if (!session?.key || !session?.uploadId || !session?.partSize || !session?.sessionToken) {
-    const init = await api.post("/upload/multipart/init", { name:file.name, size:file.size, type:file.type || "application/octet-stream" }, { timeout:30000 });
+    let init;
+    try {
+      init = await api.post("/upload/multipart/init", { name:file.name, size:file.size, type:file.type || "application/octet-stream" }, { timeout:30000 });
+    } catch (error) {
+      const detail = error.response?.data?.message || error.message || "Unable to initialize video upload";
+      throw new Error(`Video upload initialization failed: ${detail}`);
+    }
     session = { key:init.data.key, uploadId:init.data.uploadId, partSize:init.data.partSize, totalParts:init.data.totalParts, sessionToken:init.data.sessionToken };
+    if (!session.key || !session.uploadId || !session.partSize || !session.totalParts || !session.sessionToken) {
+      throw new Error("Backend returned an incomplete multipart upload session. Check Render logs.");
+    }
     localStorage.setItem(storageKey, JSON.stringify(session));
   }
 
