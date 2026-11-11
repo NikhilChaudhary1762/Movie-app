@@ -382,6 +382,83 @@ export default function AdminSeries() {
     }
   };
 
+  // EPISODE VIDEO UPLOAD - MP4 ONLY
+  const uploadEpisodeVideo = async (e) => {
+    const file = e.target.files?.[0];
+
+    // Allow selecting the same file again for resume.
+    e.target.value = "";
+
+    if (!file) return;
+
+    const isMp4 =
+      file.name.toLowerCase().endsWith(".mp4") &&
+      (!file.type || file.type === "video/mp4");
+
+    if (!isMp4) {
+      setUploadProgress(0);
+      setUploadMessage(
+        "Invalid video format. Only converted MP4 videos are allowed."
+      );
+      notify(
+        "Please convert the video using prepare-video.ps1 first.",
+        "error"
+      );
+      return;
+    }
+
+    try {
+      setUploading("episode-video");
+      setUploadProgress(0);
+      setUploadMessage("Starting B2 MP4 upload...");
+
+      notify(`Selected: ${file.name}`);
+
+      const result = await uploadVideoChunks(file, {
+        onProgress: (p) => setUploadProgress(p),
+        onMessage: (m) => setUploadMessage(m),
+      });
+
+      const uploadedVideoUrl =
+        result.videoUrl || result.watchUrl;
+
+      if (!uploadedVideoUrl) {
+        throw new Error(
+          "Upload completed but video URL was not returned."
+        );
+      }
+
+      setEpisodeForm((prev) => ({
+        ...prev,
+        videoUrl: uploadedVideoUrl,
+        downloadUrl:
+          result.downloadUrl || prev.downloadUrl,
+      }));
+
+      setUploadProgress(100);
+      setUploadMessage("Upload completed successfully!");
+
+      notify("Episode video uploaded successfully");
+    } catch (error) {
+      console.error("Episode Upload Error:", error);
+
+      setUploadMessage(
+        error.response?.data?.message ||
+          error.message ||
+          "Episode upload failed. Select the same file again to resume."
+      );
+
+      notify(
+        error.response?.data?.message ||
+          error.message ||
+          "Episode upload failed",
+        "error"
+      );
+    } finally {
+      setUploading("");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#090b10] p-4 text-white md:p-8">
       <div className="mx-auto max-w-7xl space-y-8">
@@ -757,7 +834,7 @@ export default function AdminSeries() {
               className={`${button} bg-red-600 hover:bg-red-700`}
             >
               <Plus size={16} />
-                Add Season
+              Add Season
             </button>
           </div>
 
@@ -786,9 +863,7 @@ export default function AdminSeries() {
 
             <div>
               <h2 className="text-xl font-semibold">
-                {editingEpisodeId
-                  ? "Edit Episode"
-                  : "Add New Episode"}
+                {editingEpisodeId ? "Edit Episode" : "Add New Episode"}
               </h2>
 
               <p className="text-sm text-gray-400">
@@ -800,25 +875,6 @@ export default function AdminSeries() {
           </div>
 
           <form onSubmit={saveEpisode} className="space-y-4">
-            
-<button
-  type="submit"
-  disabled={saving || !selectedId}
-  className={`${button} bg-red-600 hover:bg-red-700`}
->
-  {saving ? (
-    <Loader2 size={16} className="animate-spin" />
-  ) : editingEpisodeId ? (
-    <Save size={16} />
-  ) : (
-    <Plus size={16} />
-  )}
-
-  {editingEpisodeId
-    ? "Save Episode Changes"
-    : "Add Episode"}
-</button>
-  
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Episode Title">
                 <input
@@ -909,102 +965,105 @@ export default function AdminSeries() {
                     />
                   </label>
                 </div>
-              </Field>          
-<Field label="Upload Episode Video (B2 • Chunk/Resume)">
-  <label
-    htmlFor="episodeVideoInput"
-    className={`${button} bg-red-600 hover:bg-red-700 cursor-pointer`}
-  >
-    <Upload size={16} />
-    Select Episode Video
-  </label>
+              </Field>
 
-  <input
-    id="episodeVideoInput"
-    type="file"
-    className="hidden"
-    accept="video/*,.mp4,.mkv,.mov,.avi,.webm,.wmv,.mpeg,.mpg,.3gp,.m4v,.flv,.ts,.ogv,.m2ts,.mts,.vob,.divx,.xvid"
-    disabled={uploading === "episode-video"}
-    onChange={async (e) => {
-      const file = e.target.files?.[0];
-      e.target.value = "";
+              {/* EPISODE VIDEO UPLOAD */}
+              <Field label="Upload Episode Video (MP4 • B2 Chunk/Resume)">
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-green-500/20 bg-green-500/5 p-3">
+                    <p className="text-sm font-medium text-green-400">
+                      Required video format
+                    </p>
 
-      if (!file) return;
+                    <p className="mt-1 text-xs text-gray-300">
+                      MP4 container • H.264 video • yuv420p • AAC audio
+                    </p>
 
-      try {
-        setUploading("episode-video");
-        setUploadProgress(0);
-        setUploadMessage("Starting upload...");
-        notify(`Selected: ${file.name}`);
+                    <p className="mt-2 text-xs text-gray-400">
+                      First convert your video on your Windows PC using
+                      prepare-video.ps1. Then select the converted MP4 file.
+                    </p>
+                  </div>
 
-        const result = await uploadVideoChunks(file, {
-          onProgress: (p) => setUploadProgress(p),
-          onMessage: (m) => setUploadMessage(m),
-        });
+                  <label
+                    htmlFor="episodeVideoInput"
+                    className={`${button} w-full cursor-pointer bg-red-600 hover:bg-red-700`}
+                  >
+                    <Upload size={16} />
+                    Select Converted MP4 Video
+                  </label>
 
-        setEpisodeForm((prev) => ({
-          ...prev,
-          videoUrl: result.videoUrl || result.watchUrl,
-          downloadUrl:
-            result.downloadUrl || prev.downloadUrl,
-        }));
-        setUploadProgress(100);
-        setUploadMessage("Upload completed successfully!");
-        notify("Episode video uploaded successfully");
-      } catch (error) {
-        console.error("Episode Upload Error:", error);
+                  <input
+                    id="episodeVideoInput"
+                    type="file"
+                    className="hidden"
+                    accept=".mp4,video/mp4"
+                    disabled={uploading === "episode-video"}
+                    onChange={uploadEpisodeVideo}
+                  />
 
-        notify(
-          error.response?.data?.message ||
-          error.message ||
-          "Episode upload failed",
-          "error"
-        );
-      } finally {
-        setUploading("");
-      }
-    }}
-  />
+                  <p className="text-xs text-gray-400">
+                    8 MB chunks • Retry • Resume by selecting the exact
+                    same file again.
+                  </p>
 
-  <p className="mt-2 text-xs text-gray-400">
-    8 MB chunks • Retry • Resume by selecting the same file again.
-  </p>
+                  {uploading === "episode-video" && (
+                    <div className="mt-4 space-y-3 rounded-xl border border-white/10 bg-black/30 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm text-yellow-400">
+                          Uploading MP4 video...
+                        </span>
 
-  {uploading === "episode-video" && (
-    <div className="mt-4 space-y-3 rounded-xl border border-white/10 bg-black/30 p-4">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-sm text-yellow-400">Uploading video...</span>
-        <span className="text-lg font-bold tabular-nums text-white">
-          {uploadProgress}%
-        </span>
-      </div>
+                        <span className="text-lg font-bold tabular-nums text-white">
+                          {uploadProgress}%
+                        </span>
+                      </div>
 
-      <div
-        className="h-3 w-full overflow-hidden rounded-full bg-white/10"
-        role="progressbar"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={uploadProgress}
-      >
-        <div
-          className="h-full rounded-full bg-red-500 transition-all duration-300"
-          style={{ width: `${uploadProgress}%` }}
-        />
-      </div>
+                      <div
+                        className="h-3 w-full overflow-hidden rounded-full bg-white/10"
+                        role="progressbar"
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={uploadProgress}
+                      >
+                        <div
+                          className="h-full rounded-full bg-red-500 transition-all duration-300"
+                          style={{ width: `${uploadProgress}%` }}
+                        />
+                      </div>
 
-      <p className="text-xs text-gray-400 wrap-break-word">
-        {uploadMessage || "Preparing upload..."}
-      </p>
-    </div>
-  )}
-</Field>
+                      <p className="text-xs text-gray-400 wrap-break-word">
+                        {uploadMessage || "Preparing upload..."}
+                      </p>
+                    </div>
+                  )}
+
+                  {uploading !== "episode-video" && uploadMessage && (
+                    <p className="text-xs text-gray-400">
+                      {uploadMessage}
+                    </p>
+                  )}
+
+                  {episodeForm.videoUrl && (
+                    <p className="text-xs text-green-400">
+                      <CheckCircle size={14} className="mr-1 inline" />
+                      Episode video URL is ready.
+                    </p>
+                  )}
+                </div>
+              </Field>
 
               <Field label="Video URL (or paste manually)">
                 <input
                   className={input}
                   placeholder="b2://videos/... (filled automatically after upload)"
                   value={episodeForm.videoUrl}
-                  onChange={(e) => setEpisodeForm({ ...episodeForm, videoUrl: e.target.value })}
+                  onChange={(e) =>
+                    setEpisodeForm({
+                      ...episodeForm,
+                      videoUrl: e.target.value,
+                    })
+                  }
                 />
               </Field>
 
@@ -1048,7 +1107,7 @@ export default function AdminSeries() {
 
             <div className="flex flex-wrap gap-3">
               <button
-                disabled={saving || !selectedId}
+                disabled={saving || !selectedId || uploading === "episode-video"}
                 className={`${button} bg-red-600 hover:bg-red-700`}
               >
                 {saving ? (
@@ -1152,7 +1211,6 @@ export default function AdminSeries() {
             </div>
           )}
         </section>
-
       </div>
     </div>
   );
@@ -1166,6 +1224,7 @@ function Field({ label, children }) {
       <label className="text-sm font-medium text-gray-300">
         {label}
       </label>
+
       {children}
     </div>
   );
