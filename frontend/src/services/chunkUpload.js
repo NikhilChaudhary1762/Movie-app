@@ -36,7 +36,9 @@ export async function uploadVideoChunks(file, { onProgress = () => {}, onMessage
       init = await api.post("/upload/multipart/init", { name:file.name, size:file.size, type:file.type || "application/octet-stream" }, { timeout:30000 });
     } catch (error) {
       const detail = error.response?.data?.message || error.message || "Unable to initialize video upload";
-      throw new Error(`Video upload initialization failed: ${detail}`);
+      const uploadError = new Error(`Video upload initialization failed: ${detail}`);
+      uploadError.cause = error;
+      throw uploadError;
     }
     session = { key:init.data.key, uploadId:init.data.uploadId, partSize:init.data.partSize, totalParts:init.data.totalParts, sessionToken:init.data.sessionToken };
     if (!session.key || !session.uploadId || !session.partSize || !session.totalParts || !session.sessionToken) {
@@ -45,36 +47,30 @@ export async function uploadVideoChunks(file, { onProgress = () => {}, onMessage
     localStorage.setItem(storageKey, JSON.stringify(session));
   }
 
-  try {
-    const status = await api.get(`/upload/multipart/${encodeURIComponent(session.uploadId)}/status`, { params:{ key:session.key }, headers:{ "X-Multipart-Session":session.sessionToken }, timeout:30000 });
-    const done = new Map((status.data.parts || []).map(part => [Number(part.PartNumber), part]));
-    const parts = [];
-    let uploadedBytes = 0;
-    for (const part of done.values()) uploadedBytes += Number(part.Size || 0);
+  const status = await api.get(`/upload/multipart/${encodeURIComponent(session.uploadId)}/status`, { params:{ key:session.key }, headers:{ "X-Multipart-Session":session.sessionToken }, timeout:30000 });
+  const done = new Map((status.data.parts || []).map(part => [Number(part.PartNumber), part]));
+  const parts = [];
+  let uploadedBytes = 0;
+  for (const part of done.values()) uploadedBytes += Number(part.Size || 0);
+  onProgress(Math.min(99, Math.round(uploadedBytes * 100 / file.size)));
+
+  for (let partNumber = 1; partNumber <= session.totalParts; partNumber++) {
+    const existing = done.get(partNumber);
+    if (existing) { parts.push({ PartNumber:partNumber, ETag:existing.ETag }); continue; }
+    const start = (partNumber - 1) * session.partSize;
+    const blob = file.slice(start, Math.min(file.size, start + session.partSize));
+    onMessage(`Direct upload to Backblaze: part ${partNumber}/${session.totalParts}`);
+    const signed = await api.post("/upload/multipart/part-url", { key:session.key, uploadId:session.uploadId, partNumber, sessionToken:session.sessionToken }, { timeout:30000 });
+    const etag = await putPart(signed.data.url, blob);
+    parts.push({ PartNumber:partNumber, ETag:etag });
+    uploadedBytes += blob.size;
     onProgress(Math.min(99, Math.round(uploadedBytes * 100 / file.size)));
-
-    for (let partNumber = 1; partNumber <= session.totalParts; partNumber++) {
-      const existing = done.get(partNumber);
-      if (existing) { parts.push({ PartNumber:partNumber, ETag:existing.ETag }); continue; }
-      const start = (partNumber - 1) * session.partSize;
-      const blob = file.slice(start, Math.min(file.size, start + session.partSize));
-      onMessage(`Direct upload to Backblaze: part ${partNumber}/${session.totalParts}`);
-      const signed = await api.post("/upload/multipart/part-url", { key:session.key, uploadId:session.uploadId, partNumber, sessionToken:session.sessionToken }, { timeout:30000 });
-      const etag = await putPart(signed.data.url, blob);
-      parts.push({ PartNumber:partNumber, ETag:etag });
-      uploadedBytes += blob.size;
-      onProgress(Math.min(99, Math.round(uploadedBytes * 100 / file.size)));
-    }
-
-    onMessage("Finalizing video in Backblaze B2…");
-    const complete = await api.post("/upload/multipart/complete", { key:session.key, uploadId:session.uploadId, parts, name:file.name, size:file.size, sessionToken:session.sessionToken }, { timeout:120000 });
-    if (!complete.data?.success || !complete.data?.videoUrl) throw new Error(complete.data?.message || "B2 did not return the completed video key");
-    localStorage.removeItem(storageKey);
-    onProgress(100); onUploaded(complete.data);
-    return complete.data;
-  } catch (error) {
-    // Keep the multipart session in localStorage so the user can retry and
-    // continue from parts already stored in B2. Do not silently discard it.
-    throw error;
   }
+
+  onMessage("Finalizing video in Backblaze B2…");
+  const complete = await api.post("/upload/multipart/complete", { key:session.key, uploadId:session.uploadId, parts, name:file.name, size:file.size, sessionToken:session.sessionToken }, { timeout:120000 });
+  if (!complete.data?.success || !complete.data?.videoUrl) throw new Error(complete.data?.message || "B2 did not return the completed video key");
+  localStorage.removeItem(storageKey);
+  onProgress(100); onUploaded(complete.data);
+  return complete.data;
 }
