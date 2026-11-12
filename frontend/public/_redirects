@@ -1,1 +1,12 @@
 /* /index.html 200
+
+User-agent: *
+Allow: /
+
+Disallow: /admin
+Disallow: /profile
+Disallow: /watchlist
+Disallow: /login
+Disallow: /signup
+
+Sitemap: https://movieflex98.onrender.com/sitemap.xml
