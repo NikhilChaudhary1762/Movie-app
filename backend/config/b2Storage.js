@@ -375,9 +375,17 @@ async function getSignedVideoUrl(fileKey, expiresIn = 86400) {
     throw new Error("Invalid B2 file key");
   }
 
+  // Override object metadata at download time. Older uploads may have been
+  // stored as application/octet-stream, which makes mobile browsers reject
+  // an otherwise valid MP4 source (MEDIA_ERR_SRC_NOT_SUPPORTED).
+  const ext = path.extname(key).toLowerCase();
+  const responseContentType = getContentType(`episode${ext}`);
   const command = new GetObjectCommand({
     Bucket: process.env.B2_BUCKET.trim(),
-    Key: key
+    Key: key,
+    ResponseContentType: responseContentType,
+    ResponseContentDisposition: "inline",
+    ResponseCacheControl: "private, max-age=300"
   });
 
   return getSignedUrl(client, command, { expiresIn });
