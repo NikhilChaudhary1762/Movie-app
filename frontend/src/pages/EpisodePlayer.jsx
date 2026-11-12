@@ -28,6 +28,9 @@ const EpisodePlayer = () => {
   const [loadError, setLoadError] = useState("");
   const [savedTime, setSavedTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [mediaError, setMediaError] = useState("");
+  const [videoReload, setVideoReload] = useState(0);
+  const [retrying, setRetrying] = useState(false);
 
   const progressKey = `episode-progress-${id}`;
 
@@ -83,6 +86,38 @@ const EpisodePlayer = () => {
       active = false;
     };
   }, [id]);
+
+  // Refresh the episode endpoint to obtain a new private B2 signed URL.
+  const retryVideo = async () => {
+    try {
+      setRetrying(true);
+      setMediaError("");
+      const res = await api.get(`/episodes/${id}`);
+      const freshEpisode = res.data.episode || res.data;
+      if (!freshEpisode?.videoUrl) {
+        throw new Error("Episode API returned an empty video URL.");
+      }
+      setEpisode((current) => ({ ...current, ...freshEpisode }));
+      setDuration(0);
+      setVideoReload((value) => value + 1);
+    } catch (error) {
+      setMediaError(error.response?.data?.message || error.message || "Could not refresh the video URL.");
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  const handleVideoError = () => {
+    const video = videoRef.current;
+    const code = video?.error?.code;
+    const messages = {
+      1: "Video loading was cancelled.",
+      2: "Network error while downloading the video. Check the B2 signed URL and bucket access.",
+      3: "The browser received the video but could not decode it. The file may use an unsupported codec; MP4 with H.264 video and AAC audio is recommended.",
+      4: "The video URL or format is not supported. Check that the B2 URL is valid and the file is browser-compatible."
+    };
+    setMediaError(messages[code] || "The browser could not load this video. Refresh the signed URL or check the B2 file and format.");
+  };
 
   // RESUME VIDEO
   const handleLoadedMetadata = () => {
@@ -224,6 +259,7 @@ const EpisodePlayer = () => {
         {/* VIDEO PLAYER */}
         <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black shadow-2xl shadow-black/50">
           <video
+            key={`${id}-${videoReload}`}
             ref={videoRef}
             src={videoUrl}
             controls
@@ -233,8 +269,23 @@ const EpisodePlayer = () => {
             onLoadedMetadata={handleLoadedMetadata}
             onTimeUpdate={handleTimeUpdate}
             onEnded={handleEnded}
-            onError={() => setLoadError("Video playback failed. Check the B2 signed URL, file format, and Render logs.")}
+            onError={handleVideoError}
           />
+
+          {mediaError && (
+            <div role="alert" className="border-t border-red-500/20 bg-red-950/40 px-4 py-4 sm:px-6">
+              <p className="text-sm font-semibold text-red-300">Video playback failed</p>
+              <p className="mt-1 text-sm text-zinc-300">{mediaError}</p>
+              <button
+                type="button"
+                onClick={retryVideo}
+                disabled={retrying}
+                className="mt-3 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+              >
+                {retrying ? "Refreshing video..." : "Retry video"}
+              </button>
+            </div>
+          )}
 
           {/* PLAYER BOTTOM LABEL */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/5 bg-zinc-950 px-4 py-3 sm:px-6">
