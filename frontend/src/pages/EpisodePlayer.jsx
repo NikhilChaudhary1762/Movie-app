@@ -220,7 +220,11 @@ const EpisodePlayer = () => {
       ? Math.min((savedTime / duration) * 100, 100)
       : 0;
 
-  const videoUrl = episode.videoUrl || "";
+  const token = localStorage.getItem("token") || "";
+  const apiBase = (api.defaults.baseURL || "").replace(/\/$/, "");
+  const videoUrl = episode.videoUrl?.startsWith("b2://")
+    ? `${apiBase}/episodes/${id}/stream?token=${encodeURIComponent(token)}`
+    : (episode.videoUrl || "");
 
   const formatTime = (seconds) => {
     if (!seconds || !Number.isFinite(seconds)) return "00:00";

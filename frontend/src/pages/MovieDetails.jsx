@@ -480,7 +480,9 @@ export default function MovieDetails() {
                 onError={() => setVideoError(true)}
               >
                 <source
-                  src={mediaAccess.watchUrl}
+                  src={mediaAccess.watchUrl?.startsWith("https://s3.") && mediaAccess.watchUrl.includes("backblazeb2.com")
+                    ? `${(api.defaults.baseURL || "").replace(/\/$/, "")}/movies/${id}/stream?token=${encodeURIComponent(localStorage.getItem("token") || "")}`
+                    : mediaAccess.watchUrl}
                   type="video/mp4"
                 />
                 Your browser does not support video playback.

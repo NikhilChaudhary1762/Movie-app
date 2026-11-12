@@ -2,6 +2,8 @@ const express = require("express");
 const router = express.Router();
 const protect = require("../middleware/authMiddleware");
 const admin = require("../middleware/adminMiddleware");
+const streamAuth = require("../middleware/streamAuth");
+const { streamEpisode } = require("../controllers/mediaStreamController");
 
 const {
   getAllEpisodes,
@@ -11,6 +13,8 @@ const {
   deleteEpisode,
   getEpisodesBySeriesAndSeason,
 } = require("../controllers/episodeController");
+
+router.get("/:id/stream", streamAuth, streamEpisode);
 
 // Episode media URLs are signed; require a logged-in user to retrieve them.
 router.get("/series/:seriesId/season/:seasonNumber", protect, getEpisodesBySeriesAndSeason);

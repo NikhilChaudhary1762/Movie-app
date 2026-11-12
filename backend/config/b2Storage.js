@@ -359,6 +359,23 @@ async function abortMultipartVideo(key, uploadId) {
   );
 }
 
+
+// Stream a private B2 object directly through the API (supports HTTP Range).
+async function getVideoObject(fileKey, range) {
+  checkB2();
+  if (!fileKey || typeof fileKey !== "string") throw new Error("B2 file key is missing");
+  const key = fileKey.startsWith("b2://") ? fileKey.slice(5) : fileKey;
+  if (!key || key.startsWith("/") || key.includes("..")) throw new Error("Invalid B2 file key");
+  const command = new GetObjectCommand({
+    Bucket: process.env.B2_BUCKET.trim(),
+    Key: key,
+    ...(range ? { Range: range } : {}),
+    ResponseContentType: getContentType(key),
+    ResponseContentDisposition: "inline"
+  });
+  return client.send(command);
+}
+
 // Generate private video signed URL
 async function getSignedVideoUrl(fileKey, expiresIn = 86400) {
   checkB2();
@@ -395,6 +412,7 @@ async function getSignedVideoUrl(fileKey, expiresIn = 86400) {
 module.exports = {
   uploadVideo,
   getSignedVideoUrl,
+  getVideoObject,
   createMultipartVideo,
   signMultipartPart,
   listMultipartParts,

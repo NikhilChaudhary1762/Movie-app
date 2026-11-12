@@ -12,8 +12,11 @@ const {
 
 const protect = require("../middleware/authMiddleware");
 const admin = require("../middleware/adminMiddleware");
+const streamAuth = require("../middleware/streamAuth");
+const { streamMovie } = require("../controllers/mediaStreamController");
 
 router.get("/", getMovies);
+router.get("/:id/stream", streamAuth, streamMovie);
 router.get("/:id/access", protect, getMovieAccess);
 router.get("/:id", getMovieById);
 
