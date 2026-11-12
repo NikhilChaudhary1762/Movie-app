@@ -5,6 +5,22 @@ import api from '../services/api'
 import Navbar from '../components/Navbar'
 import MovieCard from '../components/MovieCard'
 
+const SITE_URL = 'https://movieflex98.onrender.com'
+
+function setMeta(name, content, attribute = 'name') {
+  let element = document.head.querySelector(
+    `meta[${attribute}="${name}"]`
+  )
+
+  if (!element) {
+    element = document.createElement('meta')
+    element.setAttribute(attribute, name)
+    document.head.appendChild(element)
+  }
+
+  element.setAttribute('content', content)
+}
+
 export default function Home() {
   const [movies, setMovies] = useState([])
   const [search, setSearch] = useState('')
@@ -13,6 +29,62 @@ export default function Home() {
   const [sort, setSort] = useState('default')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+
+  // Homepage SEO
+  useEffect(() => {
+    const title = 'MovieFlex - Discover Movies and Web Series'
+    const description =
+      'Explore movies and web series on MovieFlex. Discover entertainment by genre, language, ratings and release year.'
+
+    document.title = title
+
+    setMeta('description', description)
+    setMeta('robots', 'index, follow')
+    setMeta('og:title', title, 'property')
+    setMeta('og:description', description, 'property')
+    setMeta('og:type', 'website', 'property')
+    setMeta('og:url', `${SITE_URL}/`, 'property')
+    setMeta('og:site_name', 'MovieFlex', 'property')
+    setMeta('twitter:card', 'summary')
+    setMeta('twitter:title', title)
+    setMeta('twitter:description', description)
+
+    let canonical = document.querySelector(
+      'link[rel="canonical"]'
+    )
+
+    if (!canonical) {
+      canonical = document.createElement('link')
+      canonical.rel = 'canonical'
+      document.head.appendChild(canonical)
+    }
+
+    canonical.href = `${SITE_URL}/`
+
+    // Website structured data
+    const schema = {
+      '@context': 'https://schema.org',
+      '@type': 'WebSite',
+      name: 'MovieFlex',
+      url: `${SITE_URL}/`,
+      description,
+    }
+
+    let script = document.getElementById('homepage-schema')
+
+    if (!script) {
+      script = document.createElement('script')
+      script.id = 'homepage-schema'
+      script.type = 'application/ld+json'
+      document.head.appendChild(script)
+    }
+
+    script.textContent = JSON.stringify(schema)
+
+    return () => {
+      script?.remove()
+    }
+  }, [])
 
   // Fetch Movies
   useEffect(() => {
@@ -84,7 +156,6 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-linear-to-b from-zinc-950 via-black to-zinc-950 text-white">
 
-      {/* Navbar */}
       <Navbar />
 
       {/* HERO BANNER */}
@@ -99,20 +170,18 @@ export default function Home() {
             backgroundPosition: 'center',
           }}
         >
-          {/* Gradient Overlay */}
           <div className="absolute inset-0 bg-linear-to-r from-black via-black/80 to-transparent" />
           <div className="absolute inset-0 bg-linear-to-t from-zinc-950 via-transparent to-black/30" />
 
-          {/* Hero Content */}
           <div className="relative z-10 max-w-2xl px-6 py-16 md:px-16">
 
             <span className="mb-4 inline-block rounded bg-red-600 px-3 py-1 text-sm font-bold uppercase tracking-wider">
-              MovieFlix Original
+              MovieFlex Original
             </span>
 
-            <h1 className="mb-5 text-4xl font-extrabold leading-tight md:text-6xl">
+            <h2 className="mb-5 text-4xl font-extrabold leading-tight md:text-6xl">
               {featuredMovie.title}
-            </h1>
+            </h2>
 
             <div className="mb-4 flex flex-wrap items-center gap-4 text-sm text-zinc-300">
               <span className="font-semibold text-green-400">
@@ -136,10 +205,9 @@ export default function Home() {
 
             <p className="mb-8 max-w-xl text-sm leading-7 text-zinc-300 md:text-base">
               {featuredMovie.description ||
-                'Discover your next favorite movie on MovieFlix.'}
+                'Discover your next favorite movie on MovieFlex.'}
             </p>
 
-            {/* Hero Buttons */}
             <div className="flex flex-wrap gap-4">
               <Link
                 to={`/movies/${featuredMovie._id}`}
@@ -162,13 +230,12 @@ export default function Home() {
       {/* MAIN CONTENT */}
       <main className="mx-auto max-w-7xl px-6 py-10">
 
-        {/* Discover Movies Heading */}
         <h1 className="bg-linear-to-r from-white via-zinc-200 to-zinc-500 bg-clip-text text-3xl font-extrabold text-transparent md:text-5xl">
-          Discover Movies
+          Discover Movies and Web Series
         </h1>
 
         <p className="mt-3 text-zinc-400">
-          Find your next favorite movie.
+          Explore movies by genre, language and ratings on MovieFlex.
         </p>
 
         {/* Search */}
@@ -183,7 +250,6 @@ export default function Home() {
         {/* Filters */}
         <div className="mt-5 flex flex-wrap gap-4">
 
-          {/* Genre */}
           <select
             value={genre}
             onChange={(e) => setGenre(e.target.value)}
@@ -196,7 +262,6 @@ export default function Home() {
             ))}
           </select>
 
-          {/* Language */}
           <select
             value={language}
             onChange={(e) => setLanguage(e.target.value)}
@@ -209,7 +274,6 @@ export default function Home() {
             ))}
           </select>
 
-          {/* Sort */}
           <select
             value={sort}
             onChange={(e) => setSort(e.target.value)}
@@ -221,7 +285,6 @@ export default function Home() {
             <option value="year">Newest First</option>
           </select>
 
-          {/* Reset */}
           <button
             onClick={() => {
               setSearch('')
@@ -235,7 +298,7 @@ export default function Home() {
           </button>
         </div>
 
-        {/* All Movies Heading */}
+        {/* All Movies */}
         <h2 className="mb-6 mt-10 flex items-center gap-3 text-2xl font-bold text-white md:text-3xl">
           <span className="h-8 w-1.5 rounded-full bg-red-600"></span>
           All Movies
@@ -244,22 +307,18 @@ export default function Home() {
           </span>
         </h2>
 
-        {/* Loading */}
         {loading && (
           <p className="text-zinc-400">Loading movies...</p>
         )}
 
-        {/* Error */}
         {error && (
           <p className="text-red-500">{error}</p>
         )}
 
-        {/* No Movies */}
         {!loading && !error && filteredMovies.length === 0 && (
           <p className="text-zinc-400">No movies found.</p>
         )}
 
-        {/* Movie Cards */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-5 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {filteredMovies.map((movie) => (
             <MovieCard
