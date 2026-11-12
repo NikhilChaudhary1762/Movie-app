@@ -20,7 +20,9 @@ const getEpisodesBySeriesAndSeason = async (req, res) => {
 
     const episodes = await Promise.all(records.map(async (episode) => ({
       ...episode,
-      videoUrl: await signMedia(episode.videoUrl),
+      // Keep private B2 keys intact so the frontend uses the authenticated
+      // /api/episodes/:id/stream proxy instead of exposing a direct B2 URL.
+      videoUrl: episode.videoUrl || "",
       downloadUrl: await signMedia(episode.downloadUrl, 3600),
     })));
 
@@ -38,7 +40,9 @@ const getAllEpisodes = async (req, res) => {
       .sort({ seasonNumber: 1, episodeNumber: 1 }).lean();
     const episodes = await Promise.all(records.map(async (episode) => ({
       ...episode,
-      videoUrl: await signMedia(episode.videoUrl),
+      // Keep private B2 keys intact so the frontend uses the authenticated
+      // /api/episodes/:id/stream proxy instead of exposing a direct B2 URL.
+      videoUrl: episode.videoUrl || "",
       downloadUrl: await signMedia(episode.downloadUrl, 3600),
     })));
     return res.status(200).json({ success: true, episodes });
@@ -53,7 +57,8 @@ const getEpisodeById = async (req, res) => {
       .populate("series", "title").lean();
     if (!episode) return res.status(404).json({ success: false, message: "Episode not found" });
 
-    episode.videoUrl = await signMedia(episode.videoUrl);
+    // Do not convert b2:// video keys into public-facing signed URLs.
+    // EpisodePlayer detects b2:// and streams through the authenticated API proxy.
     episode.downloadUrl = await signMedia(episode.downloadUrl, 3600);
     return res.json({ success: true, episode });
   } catch (error) {

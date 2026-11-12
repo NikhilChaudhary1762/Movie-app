@@ -21,26 +21,43 @@ const app = express();
 // CORS
 // ===============================
 
+// FRONTEND_URL and ALLOWED_ORIGINS may contain comma-separated origins.
+// Keep stable production origins here and allow this project's Vercel previews.
 const allowedOrigins = [
   "http://localhost:5173",
   "https://movieflex98.onrender.com",
-  ...(process.env.FRONTEND_URL || "").split(",").map((value) => value.trim()).filter(Boolean),
-  ...(process.env.ALLOWED_ORIGINS || "").split(",").map((value) => value.trim()).filter(Boolean),
-].filter(Boolean);
+  "https://movieflex99.onrender.com",
+  ...(process.env.FRONTEND_URL || "").split(",").map((value) => value.trim().replace(/\/+$/, "")).filter(Boolean),
+  ...(process.env.ALLOWED_ORIGINS || "").split(",").map((value) => value.trim().replace(/\/+$/, "")).filter(Boolean),
+];
 
-// Use the SAME origin policy for normal requests and OPTIONS preflight.
-// A hard-coded OPTIONS origin can break browser uploads even when GET works.
+// Example: https://movie-app99-<deployment-id>-nikhilchaudhary1762.vercel.app
+const vercelPreviewOrigin = /^https:\/\/(?:movie-app99|movie)-[a-z0-9-]+-nikhilchaudhary1762\.vercel\.app$/i;
+
 const corsOptions = {
   origin(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-    console.warn("CORS rejected origin:", origin);
-    return callback(new Error(`CORS blocked origin: ${origin}`));
+    if (!origin || allowedOrigins.includes(origin) || vercelPreviewOrigin.test(origin)) {
+      return callback(null, true);
+    }
+
+    console.error("CORS rejected origin:", origin);
+    return callback(new Error(`CORS origin not allowed: ${origin}`));
   },
   credentials: true,
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Multipart-Session"],
+  methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "Range", "X-Multipart-Session"],
+  exposedHeaders: [
+    "Content-Length",
+    "Content-Range",
+    "Accept-Ranges",
+    "Content-Type",
+  ],
   optionsSuccessStatus: 204,
+  maxAge: 86400,
 };
+
+// Register CORS before body parsers and every API route so preflight,
+// JSON/API requests, multipart uploads, and video Range requests share policy.
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
 
